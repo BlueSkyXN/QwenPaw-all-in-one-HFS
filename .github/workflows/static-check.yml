@@ -1,0 +1,14 @@
+name: static-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  static-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run static checks
+        run: bash scripts/static-check.sh
