@@ -1,9 +1,13 @@
 # Release Checklist
 
+Use this checklist when changing runtime behavior, release pins, deployment docs or anything that affects the Hugging Face Space. For docs-only changes, the Docker build steps may be delegated to GitHub Actions/Hugging Face, but the final closeout still needs both remotes and live runtime state.
+
 ## Static
 
 ```bash
 bash scripts/static-check.sh
+bash scripts/validate-hfs-contract.sh
+git diff --check
 ```
 
 ## Release Pins
@@ -59,3 +63,67 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
 - Confirm admin is disabled unless intentionally enabled.
+
+## GitHub/Hugging Face Closeout
+
+Before pushing:
+
+```bash
+git status --short --branch
+git check-ignore -v .env.local local/ .DS_Store
+```
+
+Commit only tracked public files. Do not stage `.env.local`, `local/`, runtime data, logs or screenshots.
+
+Push:
+
+```bash
+git push origin main
+git push hf main
+```
+
+Confirm remote heads:
+
+```bash
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+git ls-remote hf refs/heads/main
+```
+
+Confirm GitHub Actions:
+
+```bash
+gh run list --repo BlueSkyXN/QwenPaw-all-in-one-HFS --branch main --limit 5
+```
+
+Confirm Hugging Face runtime:
+
+```bash
+hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+```
+
+Done means:
+
+```text
+HEAD == origin/main == hf/main
+GitHub static-check succeeded for HEAD
+Hugging Face repo sha == HEAD
+Hugging Face runtime.raw.sha == HEAD
+Hugging Face runtime.stage == RUNNING
+live smoke passed
+worktree has no uncommitted tracked changes
+```
+
+## Browser Login Check
+
+For fresh deployments, verify first-account creation in a browser:
+
+```text
+/login?redirect=%2F shows Create Account
+registration succeeds with local-only .env.local test credentials
+the app redirects to /chat
+Logout is visible
+browser console has no warn/error entries relevant to the app
+```
+
+Keep the username/password and screenshots local-only.

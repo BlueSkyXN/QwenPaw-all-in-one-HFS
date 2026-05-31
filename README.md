@@ -24,6 +24,26 @@ It is not the upstream QwenPaw product source. It maintains the Hugging Face Spa
 - disabled-by-default `/_admin` management shell
 - smoke/static checks and HFS alignment documentation
 
+## Project Links
+
+```text
+GitHub: https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS
+Hugging Face Space: https://huggingface.co/spaces/BlueSkyXN/QwenPaw-all-in-one-HFS
+Live app: https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space
+```
+
+The Space should be treated as private/protected unless you have reviewed QwenPaw auth, provider keys, files, memory and channel integrations for your own deployment.
+
+## Documentation
+
+Start with [`docs/README.md`](docs/README.md). The main operator documents are:
+
+- [`docs/deployment.md`](docs/deployment.md) for GitHub/Hugging Face deployment and runtime takeover.
+- [`docs/configuration.md`](docs/configuration.md) for build args, runtime variables, secrets and local `.env.local` ledger keys.
+- [`docs/ops-runbook.md`](docs/ops-runbook.md) for health checks, logs and failure triage.
+- [`docs/release-checklist.md`](docs/release-checklist.md) for release pins, CI/HF verification and closeout.
+- [`docs/security.md`](docs/security.md) for auth, secret handling and admin boundaries.
+
 ## HFS Classification
 
 ```text
@@ -103,6 +123,32 @@ DISCORD_BOT_TOKEN=<optional>
 ```
 
 `/_ops/config` reports only secret presence booleans, never secret values.
+
+## Maintainer Quick Start
+
+Create a local ledger and fill only local/private values there:
+
+```bash
+cp .env.example .env.local
+```
+
+At minimum, set:
+
+```env
+GH_REPO=BlueSkyXN/QwenPaw-all-in-one-HFS
+HF_SPACE_ID=BlueSkyXN/QwenPaw-all-in-one-HFS
+SMOKE_BASE_URL=https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space
+OPS_TOKEN=<same value configured in Hugging Face Space Settings>
+```
+
+For first-run browser verification, keep the admin login test record local-only:
+
+```env
+QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
+QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
+```
+
+Do not commit `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
 ## Build
 
@@ -216,6 +262,25 @@ bash scripts/validate-hfs-contract.sh
 ```
 
 The static gate checks repository shape and Python/shell syntax only. It does not replace Docker build, Hugging Face runtime takeover or live endpoint smoke.
+
+For a deployed Space, run:
+
+```bash
+set -a
+. ./.env.local
+set +a
+bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
+```
+
+After pushing to both remotes, verify all three states independently:
+
+```text
+local HEAD == origin/main == hf/main
+Hugging Face repo sha == local HEAD
+Hugging Face runtime.raw.sha == local HEAD and runtime.stage == RUNNING
+```
+
+Only then treat the Space as updated.
 
 ## Production Boundary
 

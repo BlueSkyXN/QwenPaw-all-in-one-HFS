@@ -1,6 +1,35 @@
 # Deployment
 
+This repository is deployed as a repo-root Hugging Face Docker Space. GitHub and Hugging Face are two independent remotes; a complete deployment verifies both git state and live runtime state.
+
+## Prerequisites
+
+- Hugging Face Space SDK: Docker.
+- Hugging Face Persistent Storage enabled before relying on `/data`.
+- `OPS_TOKEN` configured in Space Settings for protected diagnostics.
+- QwenPaw authentication enabled for exposed deployments.
+
+Recommended local ledger:
+
+```bash
+cp .env.example .env.local
+```
+
+Fill `GH_REPO`, `HF_SPACE_ID`, `SMOKE_BASE_URL` and `OPS_TOKEN` in `.env.local`. Keep real values local-only.
+
+## Lightweight Local Checks
+
+These checks do not install external dependencies and do not build the container:
+
+```bash
+bash scripts/static-check.sh
+bash scripts/validate-hfs-contract.sh
+git diff --check
+```
+
 ## Local Build
+
+Local Docker build is optional for development. For this repository's normal maintenance workflow, heavy build/runtime verification can be performed by GitHub Actions and Hugging Face runtime instead.
 
 ```bash
 bash scripts/local-build.sh
@@ -44,3 +73,87 @@ OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860
 6. Run smoke against the live Space URL.
 
 GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Treat the Space as available only after live smoke passes.
+
+## Push Flow
+
+Expected remotes:
+
+```bash
+git remote -v
+```
+
+```text
+origin  https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS.git
+hf      https://huggingface.co/spaces/BlueSkyXN/QwenPaw-all-in-one-HFS
+```
+
+Push both remotes:
+
+```bash
+git push origin main
+git push hf main
+```
+
+Confirm branch heads:
+
+```bash
+git rev-parse HEAD
+git ls-remote origin refs/heads/main
+git ls-remote hf refs/heads/main
+```
+
+All three SHAs must match.
+
+## Runtime Takeover
+
+After `git push hf main`, the Space repository `sha` can update before the running container does. Check runtime takeover explicitly:
+
+```bash
+hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+```
+
+Deployment is not complete until:
+
+```text
+repo sha == HEAD
+runtime.stage == RUNNING
+runtime.raw.sha == HEAD
+```
+
+`RUNNING_BUILDING` and `RUNNING_APP_STARTING` are transitional states. Keep polling until `RUNNING` and the runtime SHA has switched.
+
+## Live Smoke
+
+```bash
+set -a
+. ./.env.local
+set +a
+bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
+```
+
+Expected checks:
+
+```text
+PASS smoke: nginx-health
+PASS smoke: healthz
+PASS smoke: readyz
+PASS smoke: web-root
+PASS smoke: ops-health
+PASS smoke: ops-status
+PASS smoke: ops-config
+PASS smoke: admin default boundary status=404
+PASS qwenpaw-hfs-smoke
+```
+
+## First-Run Browser Verification
+
+On a fresh persistent volume, QwenPaw shows `Create Account`. Use the browser to create the first admin account only with credentials stored in local `.env.local`:
+
+```env
+QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
+QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
+```
+
+Successful verification reaches `/chat` and shows `Logout`. Store screenshots under `local/`; they are local-only and ignored.
+
+If the page already has an account, use the existing deployment credential record. Do not reset or overwrite persistent QwenPaw data unless that is an explicit maintenance task.
