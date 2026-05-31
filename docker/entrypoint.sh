@@ -19,6 +19,9 @@ mkdir -p \
   /data/var/logs \
   /tmp/qwenpaw-run/nginx-client-body \
   /tmp/qwenpaw-run/nginx-proxy \
+  /tmp/qwenpaw-run/nginx-fastcgi \
+  /tmp/qwenpaw-run/nginx-uwsgi \
+  /tmp/qwenpaw-run/nginx-scgi \
   /tmp/qwenpaw-run/supervisor \
   /tmp/qwenpaw-cache
 
@@ -51,5 +54,7 @@ For Hugging Face Spaces, use a Private/Protected Space and enable QwenPaw authen
 ============================================================
 EOF
 fi
+
+nginx -t -c /home/user/app/docker/nginx.conf
 
 exec /usr/bin/supervisord -c /home/user/app/docker/supervisord.conf
