@@ -66,17 +66,22 @@ RUN if [ -x /usr/bin/chromium ]; then \
       sed -i 's/^CHROMIUM_FLAGS=""/CHROMIUM_FLAGS="--no-sandbox"/' /usr/bin/chromium || true; \
     fi
 
-RUN useradd -m -u 1000 user \
-    && mkdir -p \
+RUN set -eux; \
+    if ! getent passwd 1000 >/dev/null; then \
+      useradd -m -u 1000 user; \
+    fi; \
+    mkdir -p /home/user; \
+    chown 1000:1000 /home/user; \
+    mkdir -p \
       /data/qwenpaw/working \
       /data/qwenpaw/secrets \
       /data/qwenpaw/backups \
       /data/var/logs \
       /tmp/qwenpaw-run \
       /home/user/app \
-    && chown -R user:user /data /tmp/qwenpaw-run /home/user
+    && chown -R 1000:1000 /data /tmp/qwenpaw-run /home/user
 
-USER user
+USER 1000
 WORKDIR /home/user/app
 
 RUN python3 -m venv /home/user/.venv \
@@ -98,8 +103,8 @@ RUN python3 -m venv /home/user/.venv \
     && uv pip install --python /home/user/.venv/bin/python --no-cache-dir "$artifact" \
     && rm -rf /tmp/qwenpaw-dist
 
-COPY --chown=user:user docker/ /home/user/app/docker/
-COPY --chown=user:user hfs-dev.toml /home/user/app/hfs-dev.toml
+COPY --chown=1000:1000 docker/ /home/user/app/docker/
+COPY --chown=1000:1000 hfs-dev.toml /home/user/app/hfs-dev.toml
 
 RUN chmod +x /home/user/app/docker/entrypoint.sh \
              /home/user/app/docker/healthcheck.sh
