@@ -20,7 +20,7 @@ Set `QWENPAW_AUTH_ENABLED=true` for exposed Spaces. On a fresh persistent volume
 
 ## Ops Surface
 
-`/_ops/healthz` and `/_ops/readyz` are public through `/healthz` and `/readyz` for platform health checks. Other `/_ops` endpoints require `OPS_TOKEN`.
+`/healthz` and `/readyz` are public aliases for platform health checks. Direct `/_ops/*` endpoints require `OPS_TOKEN`.
 
 Supported token forms:
 
@@ -31,6 +31,7 @@ Authorization: Bearer <OPS_TOKEN>
 ```
 
 Use headers for automation. The query token form is a browser-only fallback and can be recorded in browser history or proxy logs.
+When the query token is valid, `ops-service` exchanges it for a signed HttpOnly cookie scoped to `/_ops/` and redirects to a clean URL. Do not place `OPS_TOKEN` in links, screenshots or long-lived docs.
 
 ## Admin Surface
 
@@ -42,15 +43,19 @@ When `ADMIN_ENABLED=true`, mutating endpoints still require:
 - fixed whitelisted actions only
 - audit logging to `/data/var/logs/admin-audit.jsonl`
 
-Current whitelisted actions:
+Current admin endpoints:
 
 ```text
-restart-service: qwenpaw, nginx, ops-service, admin-service, xvfb
-reload-nginx
-run-health-checks
+GET  /_admin/api/status
+GET  /_admin/api/actions
+GET  /_admin/api/audit
+POST /_admin/api/actions/restart-service: qwenpaw, nginx, ops-service, admin-service, xvfb
+POST /_admin/api/actions/reload-nginx
+POST /_admin/api/actions/run-health-checks
 ```
 
 Leave `ADMIN_ENABLED=false` for normal operation. Enabling admin changes the risk profile because it exposes controlled restart and health-check actions, even though they are whitelisted.
+Do not add a shell, arbitrary command runner, package installer, file editor or secret viewer to `/_admin`.
 
 ## What Not To Commit
 

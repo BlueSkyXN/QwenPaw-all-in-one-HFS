@@ -40,8 +40,8 @@ or:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_VERSION=1.1.9 \
-  --build-arg QWENPAW_PACKAGE_SHA256=73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63 \
+  --build-arg QWENPAW_VERSION=1.1.12.post2 \
+  --build-arg QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a \
   .
 ```
 
@@ -141,6 +141,7 @@ PASS smoke: web-root
 PASS smoke: ops-health
 PASS smoke: ops-status
 PASS smoke: ops-config
+PASS smoke: ops-persistence
 PASS smoke: admin default boundary status=404
 PASS qwenpaw-hfs-smoke
 ```

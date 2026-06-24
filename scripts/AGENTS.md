@@ -1,0 +1,51 @@
+# scripts navigation card
+
+Maintainer automation for validation, local Docker build/run, and Space smoke checks. Read
+this card before changing any script or moving validation logic.
+Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`,
+`hf-space-smoke.sh`, `admin-smoke.sh`, `local-build.sh`, `local-run.sh`.
+
+## Local invariants
+
+- `static-check.sh` is the default no-Docker gate and must remain runnable with `bash` and
+  `python3` only.
+- `validate-hfs-contract.sh` is the repository-local HFS contract authority. It should fail
+  on Pattern A drift, port drift, missing required files, release pin drift, routing drift,
+  and ops/admin boundary regressions.
+- `hf-space-smoke.sh` must check Nginx liveness, `/healthz`, `/readyz`, web root, protected
+  `/_ops` endpoints when a token is present, and the default admin boundary.
+- `admin-smoke.sh` must keep admin disabled-state checks by default and execute mutating
+  admin actions only when explicitly requested.
+- `check-qwenpaw-pins.py` is a networked release gate for package/version pin drift. Do
+  not make it part of the default no-network static gate.
+- Local build/run helpers may require Docker; syntax and static validation must not.
+
+## Required before changes
+
+- Keep command names aligned with root `AGENTS.md`, docs, and CI.
+- For contract changes, cross-check `hfs-dev.toml`, `Dockerfile`, `README.md`,
+  `docs/hfs-alignment.md`, and `.github/workflows/static-check.yml`.
+- For smoke changes, cross-check `docker/nginx.conf`, `docker/ops_service.py`,
+  `docker/admin_service.py`, and `docs/ops-runbook.md`.
+
+## Do not
+
+- Do not make `static-check.sh` require Docker, network, Hugging Face auth, or live Space
+  access.
+- Do not print real `OPS_TOKEN`, `ADMIN_TOKEN`, provider keys, or `.env.local` values.
+- Do not let smoke pass if only `/nginx-health` works while app root or health/readiness
+  endpoints are broken.
+- Do not make scripts mutate remotes, deploy, or delete local data unless the user asked for
+  that operation and the command name clearly signals it.
+
+## Validation
+
+Use root validation commands. For script-only edits:
+
+```bash
+bash scripts/static-check.sh
+bash scripts/validate-hfs-contract.sh
+git diff --check
+```
+
+Live smoke requires a running local container or deployed Space and may require `OPS_TOKEN`.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import hashlib
 import json
 import os
 import platform
@@ -9,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import time
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,7 @@ PORT = int(os.environ.get("QWENPAW_OPS_PORT", "8081"))
 STARTED_AT = time.time()
 LOG_DIR = Path(os.environ.get("QWENPAW_OPS_LOG_DIR", "/data/var/logs"))
 SUPERVISOR_CONF = os.environ.get("SUPERVISOR_CONF", "/home/user/app/docker/supervisord.conf")
+OPS_SESSION_COOKIE = "qwenpaw_ops_session"
 
 LOG_WHITELIST = {
     "qwenpaw": "qwenpaw.log",
@@ -48,12 +51,35 @@ SECRET_KEYS = [
 ]
 
 
+def env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def parse_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    if minimum is not None:
+        parsed = max(parsed, minimum)
+    if maximum is not None:
+        parsed = min(parsed, maximum)
+    return parsed
+
+
+def parse_bool(value: str, default: bool = False) -> bool:
+    if not value:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def json_response(handler: BaseHTTPRequestHandler, status: int, body: dict[str, Any]) -> None:
     payload = json.dumps(body, ensure_ascii=False, sort_keys=True).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Cache-Control", "no-store")
     add_security_headers(handler)
+    maybe_set_session_cookie(handler)
     handler.send_header("Content-Length", str(len(payload)))
     handler.end_headers()
     handler.wfile.write(payload)
@@ -65,6 +91,7 @@ def text_response(handler: BaseHTTPRequestHandler, status: int, body: str, conte
     handler.send_header("Content-Type", content_type)
     handler.send_header("Cache-Control", "no-store")
     add_security_headers(handler)
+    maybe_set_session_cookie(handler)
     handler.send_header("Content-Length", str(len(payload)))
     handler.end_headers()
     handler.wfile.write(payload)
@@ -77,26 +104,107 @@ def add_security_headers(handler: BaseHTTPRequestHandler) -> None:
     handler.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 
 
-def header_token(handler: BaseHTTPRequestHandler) -> str:
+def session_ttl_seconds() -> int:
+    return parse_int(env("OPS_SESSION_TTL_SECONDS"), 3600, minimum=60, maximum=86400)
+
+
+def sign_message(*parts: str) -> str:
+    payload = "|".join(parts).encode("utf-8")
+    return hmac.new(env("OPS_TOKEN").encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def make_session() -> tuple[str, int]:
+    expires_at = int(time.time()) + session_ttl_seconds()
+    nonce = hashlib.sha256(f"{time.time()}:{os.urandom(16).hex()}".encode("utf-8")).hexdigest()[:32]
+    signature = sign_message("ops-session", str(expires_at), nonce)
+    return f"{expires_at}.{nonce}.{signature}", expires_at
+
+
+def parse_session(cookie_value: str) -> bool:
+    try:
+        expires_raw, nonce, signature = cookie_value.split(".", 2)
+        expires_at = int(expires_raw)
+    except (AttributeError, ValueError):
+        return False
+    if expires_at < int(time.time()) or not nonce or not signature or not env("OPS_TOKEN"):
+        return False
+    expected = sign_message("ops-session", str(expires_at), nonce)
+    return hmac.compare_digest(signature, expected)
+
+
+def cookie_secure_enabled(handler: BaseHTTPRequestHandler) -> bool:
+    mode = env("OPS_COOKIE_SECURE", "auto").strip().lower()
+    if mode in {"1", "true", "yes", "on"}:
+        return True
+    if mode in {"0", "false", "no", "off"}:
+        return False
+    proto = handler.headers.get("X-Forwarded-Proto", "").split(",", 1)[0].strip().lower()
+    return proto == "https"
+
+
+def maybe_set_session_cookie(handler: BaseHTTPRequestHandler) -> None:
+    if getattr(handler, "ops_auth_source", "") not in {"header", "query"}:
+        return
+    value, expires_at = make_session()
+    max_age = max(expires_at - int(time.time()), 0)
+    secure = "; Secure" if cookie_secure_enabled(handler) else ""
+    handler.send_header(
+        "Set-Cookie",
+        f"{OPS_SESSION_COOKIE}={value}; Path=/_ops/; Max-Age={max_age}; HttpOnly; SameSite=Lax{secure}",
+    )
+
+
+def cookie_authenticated(handler: BaseHTTPRequestHandler) -> bool:
+    raw = handler.headers.get("Cookie", "")
+    if not raw:
+        return False
+    cookie = SimpleCookie()
+    try:
+        cookie.load(raw)
+    except Exception:
+        return False
+    morsel = cookie.get(OPS_SESSION_COOKIE)
+    return bool(morsel and parse_session(morsel.value))
+
+
+def auth_source(handler: BaseHTTPRequestHandler) -> str:
+    expected = env("OPS_TOKEN")
+    if not expected:
+        return ""
     token = handler.headers.get("X-Ops-Token", "")
     auth = handler.headers.get("Authorization", "")
     if not token and auth.startswith("Bearer "):
         token = auth.removeprefix("Bearer ").strip()
-    if not token:
-        query = parse_qs(urlparse(handler.path).query)
-        token = (query.get("token") or [""])[0]
-    return token
+    if token and hmac.compare_digest(token, expected):
+        return "header"
+    query = parse_qs(urlparse(handler.path).query)
+    token = (query.get("token") or [""])[0]
+    if token and hmac.compare_digest(token, expected):
+        return "query"
+    if cookie_authenticated(handler):
+        return "cookie"
+    return ""
 
 
 def require_auth(handler: BaseHTTPRequestHandler) -> bool:
-    expected = os.environ.get("OPS_TOKEN", "")
-    if not expected:
+    if not env("OPS_TOKEN"):
         json_response(handler, 503, {"ok": False, "error": "OPS_TOKEN is not configured", "locked": True})
         return False
-    if not hmac.compare_digest(header_token(handler), expected):
+    handler.ops_auth_source = auth_source(handler)
+    if not handler.ops_auth_source:
         json_response(handler, 401, {"ok": False, "error": "unauthorized"})
         return False
     return True
+
+
+def query_token_redirect(handler: BaseHTTPRequestHandler) -> None:
+    handler.send_response(303)
+    handler.send_header("Location", "/_ops/")
+    handler.send_header("Cache-Control", "no-store")
+    add_security_headers(handler)
+    maybe_set_session_cookie(handler)
+    handler.send_header("Content-Length", "0")
+    handler.end_headers()
 
 
 def tcp_check(host: str, port: int, timeout: float = 1.5) -> bool:
@@ -149,6 +257,10 @@ def safe_config() -> dict[str, Any]:
             "disabled_channels": os.environ.get("QWENPAW_DISABLED_CHANNELS", ""),
             "running_in_container": os.environ.get("QWENPAW_RUNNING_IN_CONTAINER", ""),
         },
+        "ops": {
+            "session_ttl_seconds": session_ttl_seconds(),
+            "cookie_secure": env("OPS_COOKIE_SECURE", "auto"),
+        },
         "secret_presence": {key: bool(os.environ.get(key)) for key in SECRET_KEYS},
     }
 
@@ -181,6 +293,32 @@ def system_info() -> dict[str, Any]:
         "loadavg": os.getloadavg() if hasattr(os, "getloadavg") else None,
         "disk_data": {"total": usage.total, "used": usage.used, "free": usage.free},
         "process_count": len([p for p in Path("/proc").iterdir() if p.name.isdigit()]) if Path("/proc").exists() else None,
+    }
+
+
+def persistence_info() -> dict[str, Any]:
+    working = Path(env("QWENPAW_WORKING_DIR", "/data/qwenpaw/working"))
+    secrets = Path(env("QWENPAW_SECRET_DIR", "/data/qwenpaw/secrets"))
+    backups = Path(env("QWENPAW_BACKUP_DIR", "/data/qwenpaw/backups"))
+    probe = Path("/data/.qwenpaw_hfs_persistent_storage_probe")
+    return {
+        "ok": Path("/data").exists() and os.access("/data", os.W_OK),
+        "data": {
+            "path": "/data",
+            "exists": Path("/data").exists(),
+            "writable": os.access("/data", os.W_OK),
+            "persistent_probe_exists": probe.exists(),
+        },
+        "qwenpaw": {
+            "working_dir": str(working),
+            "working_dir_exists": working.exists(),
+            "config_exists": (working / "config.json").exists(),
+            "secret_dir": str(secrets),
+            "secret_dir_exists": secrets.exists(),
+            "backup_dir": str(backups),
+            "backup_dir_exists": backups.exists(),
+            "backup_count": len(list(backups.glob("*"))) if backups.exists() else 0,
+        },
     }
 
 
@@ -225,20 +363,45 @@ class Handler(BaseHTTPRequestHandler):
         if path in {"/_ops", "/_ops/index"}:
             if not require_auth(self):
                 return
+            if getattr(self, "ops_auth_source", "") == "query":
+                query_token_redirect(self)
+                return
             body = """
 <!doctype html><html><head><meta charset='utf-8'><title>QwenPaw HFS Ops</title></head>
 <body><h1>QwenPaw HFS Ops</h1><p>Read-only diagnostics dashboard.</p>
 <ul>
 <li><a href='/_ops/health'>health</a></li>
 <li><a href='/_ops/status'>status</a></li>
+<li><a href='/_ops/system'>system</a></li>
+<li><a href='/_ops/persistence'>persistence</a></li>
 <li><a href='/_ops/config'>config</a></li>
 <li><a href='/_ops/version'>version</a></li>
+<li><a href='/_ops/errors'>errors</a></li>
+<li><a href='/_ops/metrics'>metrics</a></li>
 </ul></body></html>
 """
             text_response(self, 200, body, "text/html; charset=utf-8")
             return
 
-        if path in {"/_ops/healthz", "/_ops/readyz", "/_ops/health"}:
+        if path in {"/healthz", "/readyz"}:
+            qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
+            qwenpaw_up = tcp_check("127.0.0.1", qwenpaw_port)
+            body = {
+                "ok": qwenpaw_up,
+                "checks": {
+                    "qwenpaw_tcp": qwenpaw_up,
+                    "ops_tcp": True,
+                    "data_writable": os.access("/data", os.W_OK),
+                    "config_exists": Path(os.environ.get("QWENPAW_WORKING_DIR", "/data/qwenpaw/working"), "config.json").exists(),
+                },
+                "uptime_seconds": round(time.time() - STARTED_AT, 3),
+            }
+            json_response(self, 200 if body["ok"] else 503, body)
+            return
+
+        if path in {"/_ops/health", "/_ops/healthz", "/_ops/readyz"}:
+            if not require_auth(self):
+                return
             qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
             qwenpaw_up = tcp_check("127.0.0.1", qwenpaw_port)
             body = {
@@ -270,6 +433,13 @@ class Handler(BaseHTTPRequestHandler):
             if not require_auth(self):
                 return
             json_response(self, 200, {"ok": True, "config": safe_config()})
+            return
+
+        if path == "/_ops/persistence":
+            if not require_auth(self):
+                return
+            body = persistence_info()
+            json_response(self, 200 if body["ok"] else 503, body)
             return
 
         if path == "/_ops/version":

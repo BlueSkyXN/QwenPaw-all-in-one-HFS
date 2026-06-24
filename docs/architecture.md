@@ -8,8 +8,8 @@ QwenPaw is served as a multi-process Docker Space behind one public Nginx port. 
 Nginx :7860
   ├─ /                  -> QwenPaw app :8088
   ├─ /nginx-health      -> static Nginx liveness
-  ├─ /healthz           -> ops-service /_ops/healthz
-  ├─ /readyz            -> ops-service /_ops/readyz
+  ├─ /healthz           -> ops-service public healthz
+  ├─ /readyz            -> ops-service public readiness
   ├─ /_ops/*            -> ops-service :8081
   └─ /_admin/*          -> admin-service :8082
 
@@ -66,7 +66,7 @@ Hugging Face rebuilds should not depend on `/data` during Docker build. `/data` 
 
 `/_ops` is read-only and never runs request-supplied commands. Fixed local checks are whitelisted in code.
 
-`/_admin` is disabled by default. When enabled, mutating actions require token authentication and `confirm=true`.
+`/_admin` is disabled by default. When enabled, mutating actions require token authentication, `X-CSRF-Token` and `confirm=true`.
 
 ## Request Routing
 

@@ -69,6 +69,8 @@ require_file docker/supervisord.conf
 require_file docker/ops_service.py
 require_file docker/admin_service.py
 require_file docker/healthcheck.sh
+require_file scripts/admin-smoke.sh
+require_file scripts/check-qwenpaw-pins.py
 require_file scripts/hf-space-smoke.sh
 require_file docs/hfs-alignment.md
 
@@ -199,8 +201,11 @@ require_grep '^ARG UV_VERSION=' Dockerfile "Dockerfile must expose UV_VERSION bu
 require_grep '^ARG QWENPAW_UPSTREAM_REF=' Dockerfile "Dockerfile must expose QWENPAW_UPSTREAM_REF build input"
 require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile "Dockerfile must select base runtime image from BASE_IMAGE_REF"
 require_grep 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must install QwenPaw from QWENPAW_VERSION"
-require_grep 'QWENPAW_PACKAGE_SHA256=73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63' Dockerfile "Dockerfile must default to the verified qwenpaw 1.1.9 wheel SHA256"
-require_grep 'QWENPAW_UPSTREAM_REF=2d9527bb097f9b09428190f80e1f3fd44f2ff453' Dockerfile "Dockerfile must record the verified upstream v1.1.9 commit"
+require_grep 'QWENPAW_VERSION=1\.1\.12\.post2' Dockerfile "Dockerfile must default to the verified qwenpaw 1.1.12.post2 release"
+require_grep 'QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' Dockerfile "Dockerfile must default to the verified qwenpaw 1.1.12.post2 wheel SHA256"
+require_grep 'QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03' Dockerfile "Dockerfile must record the verified upstream v1.1.12.post2 commit"
+require_grep 'pypi.org/pypi/qwenpaw/json' scripts/check-qwenpaw-pins.py "pin checker must compare against PyPI package metadata"
+require_grep 'git_remote_tag_commit' scripts/check-qwenpaw-pins.py "pin checker must compare QWENPAW_UPSTREAM_REF against upstream tag metadata"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"
 require_absent '^FROM \${DIFY_' Dockerfile "QwenPaw HFS must not select Dify images"
@@ -214,6 +219,9 @@ require_grep '^\*\.pem$' .dockerignore ".dockerignore must exclude *.pem"
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
+require_grep '/_ops/persistence' scripts/hf-space-smoke.sh "smoke script must check /_ops/persistence when OPS_TOKEN is set"
+require_grep '/_admin/api/status' scripts/admin-smoke.sh "admin smoke script must check /_admin/api/status"
+require_grep 'ADMIN_EXPECTED_ENABLED' scripts/admin-smoke.sh "admin smoke script must keep disabled-by-default mode explicit"
 require_grep 'web-root' scripts/hf-space-smoke.sh "smoke script must check the web root"
 require_grep 'listen 7860 default_server;' docker/nginx.conf "Nginx must listen on 7860 as the default server"
 require_grep 'limit_except GET' docker/nginx.conf "Nginx ops route must reject non-GET methods"

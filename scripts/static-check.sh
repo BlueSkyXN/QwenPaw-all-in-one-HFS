@@ -17,11 +17,16 @@ fi
 
 bash -n docker/entrypoint.sh
 bash -n docker/healthcheck.sh
+bash -n scripts/admin-smoke.sh
 bash -n scripts/hf-space-smoke.sh
 bash -n scripts/local-build.sh
 bash -n scripts/local-run.sh
 
-PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/ops_service.py docker/admin_service.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
+  docker/ops_service.py \
+  docker/admin_service.py \
+  scripts/check-qwenpaw-pins.py
 rm -rf docker/__pycache__
+rm -rf scripts/__pycache__
 
 printf 'PASS static-check\n'

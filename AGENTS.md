@@ -1,37 +1,220 @@
-# Agent Instructions — QwenPaw-all-in-one-HFS
+# Repository agent instructions
 
-This repository is a Hugging Face Docker Space port package for upstream QwenPaw.
+## Purpose
 
-## Classification
+This repository is the Hugging Face Docker Space delivery package for upstream QwenPaw.
+It is a Pattern A HFS Port Repository: the repository root is the Space root, and the
+runtime installs the upstream `qwenpaw` package artifact during Docker build.
+
+## Codex startup behavior
+
+- Codex usually starts from the repository root, so this file is the main repo-local
+  startup instruction.
+- Local `AGENTS.md` files under subdirectories are navigation cards. They are not a
+  replacement for this root router.
+- Before editing a directory marked `Yes` in the Directory map, read that local card
+  with `cat <path>/AGENTS.md`.
+- If multiple nested `AGENTS.md` files exist on the path to a target file, read them
+  from shallow to deep before making changes.
+- If Codex is started from a subdirectory, the nearest local `AGENTS.md` may be loaded
+  automatically. Still use this root file as the authoritative repository map.
+
+## Repository classification
 
 ```text
-Pattern A: HFS Port Repository
+Pattern: A - HFS Port Repository
 Runtime mode: artifact-at-build-time
 Space root: repo root
+Public port: 7860
+Internal app port: 8088
+Ops service port: 8081
+Admin service port: 8082
 ```
 
-Do not add `cloud/hfs/README.md` or `cloud/hfs/Dockerfile`.
+Do not move the Space implementation into `cloud/hfs/`. In this repository, root-level
+`README.md`, `Dockerfile`, `hfs-dev.toml`, `docker/`, `scripts/`, and `docs/` are the
+Space package surface.
 
-## Boundaries
+## Directory map
 
-- Do not vendor upstream QwenPaw source unless the runtime mode is intentionally changed to `source-fetch`.
-- Do not commit `.env`, API keys, channel tokens, local databases, logs or Hugging Face secrets.
-- Keep runtime persistence under `/data/qwenpaw/*`.
-- Keep pid files, sockets and transient runtime files under `/tmp/qwenpaw-run`.
-- `/_ops` must remain read-only.
-- `/_admin` must remain disabled by default and allow only whitelisted actions.
+| Path | Responsibility | Local AGENTS.md | Read when |
+|---|---|---:|---|
+| `AGENTS.md` | Startup router, directory map, command index, repository-wide boundaries | No | Update when repository structure, commands, or local cards change |
+| `README.md` | Hugging Face Space card plus human maintainer overview | No | Updating Space metadata, public quick start, or documented runtime shape |
+| `Dockerfile` | Root Docker Space build, upstream artifact install, release pin environment | No | Changing base image, package pins, OS packages, build args, ports, copied files, healthcheck, user, or entrypoint |
+| `hfs-dev.toml` | Machine-readable HFS contract and release pin metadata | No | Changing HFS pattern, runtime mode, required files, ports, health endpoints, or release pins |
+| `.dockerignore` | Docker build context boundary and secret/local exclusions | No | Changing what can enter the Space build context |
+| `.gitignore` | Git working tree exclusions for local secrets, runtime data, caches, and ignored mirrors | No | Changing local/private file handling |
+| `.env.example` | Non-secret example runtime values only | No | Adding or renaming public configuration keys |
+| `.github/` | GitHub Actions workflow for static validation | Yes | Any workflow or CI trigger change |
+| `docker/` | Runtime glue copied into the image: entrypoint, Nginx, Supervisor, healthcheck, ops/admin services, runtime env template | Yes | Any runtime behavior, routing, auth boundary, logs, persistence, process supervision, ops/admin, or healthcheck change |
+| `scripts/` | Maintainer validation, local build/run, and smoke scripts | Yes | Any script, release gate, smoke behavior, Docker helper, or HFS contract validation change |
+| `docs/` | Operator documentation: architecture, config, deployment, ops, release, security, HFS alignment | No | Documentation-only edits; keep facts aligned with root commands, `Dockerfile`, `hfs-dev.toml`, `docker/`, and `scripts/` |
+| `local/` | Ignored local-only ledger, screenshots, browser checks, scratch clones, or private deployment records | No | Do not edit for repository changes; do not stage or publish |
+| `.codex/` | Ignored local Codex app/session metadata | No | Do not edit for repository changes |
 
-## Checks
+## On-demand cat protocol
 
-Run before commit:
+Before editing files under a directory that has a local `AGENTS.md`, read that file
+first:
 
 ```bash
-bash scripts/static-check.sh
-bash scripts/validate-hfs-contract.sh
+cat docker/AGENTS.md
+cat scripts/AGENTS.md
+cat .github/AGENTS.md
 ```
 
-Runtime smoke requires a running container or Space:
+Read only the card for the directory you are touching unless the change crosses
+boundaries. Cross-boundary changes should read every affected card before editing.
+
+## Command index
+
+These commands are confirmed from repository scripts, docs, and CI. Do not invent
+additional commands without checking real files first.
+
+| Command | Purpose | Scope | Sandbox notes |
+|---|---|---|---|
+| `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, Python compile checks, and removes generated `__pycache__` folders. | repo | No Docker or network required. Requires `bash` and `python3`. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
+| `bash scripts/validate-hfs-contract.sh` | Validate Pattern A repo shape, `hfs-dev.toml`, Space metadata, release pins, routing/security invariants, ignored secret patterns, and smoke coverage. | repo | No Docker or network required. Requires `python3` with `tomllib`, plus standard shell tools. |
+| `python3 scripts/check-qwenpaw-pins.py` | Networked release check that compares Dockerfile `QWENPAW_VERSION`, wheel SHA256, and upstream tag ref against PyPI and upstream QwenPaw. | release pins | Requires network, `curl`, `git`, and access to PyPI/GitHub. Not part of the default static gate. |
+| `git diff --check` | Whitespace/error check before publishing changes. | repo | Read-only Git check. |
+| `bash -n docker/entrypoint.sh` | Targeted shell syntax check for runtime entrypoint edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
+| `bash -n docker/healthcheck.sh` | Targeted shell syntax check for container healthcheck edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
+| `bash -n scripts/admin-smoke.sh` | Targeted shell syntax check for admin smoke edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not run network calls. |
+| `bash -n scripts/hf-space-smoke.sh` | Targeted shell syntax check for smoke edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not run network calls. |
+| `bash -n scripts/local-build.sh` | Targeted shell syntax check for local Docker build helper edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not build. |
+| `bash -n scripts/local-run.sh` | Targeted shell syntax check for local Docker run helper edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not run Docker. |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/ops_service.py docker/admin_service.py scripts/check-qwenpaw-pins.py` | Targeted Python syntax check for ops/admin and release pin checker edits. | `docker/`, `scripts/` | Covered by `scripts/static-check.sh`. Remove any generated `__pycache__` if run without `PYTHONDONTWRITEBYTECODE=1`. |
+| `bash scripts/local-build.sh` | Build local Docker image `qwenpaw-all-in-one-hfs:dev` by default. | repo | Requires Docker daemon and network/package downloads during image build. Not a default sandbox check. |
+| `OPS_TOKEN=dev-ops-token bash scripts/local-run.sh` | Run the local Docker container on port `7860`. | repo | Requires Docker daemon, local image, interactive container runtime, and port availability. |
+| `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` or `QWENPAW_OPS_TOKEN` is set. |
+| `ADMIN_EXPECTED_ENABLED=false bash scripts/admin-smoke.sh http://127.0.0.1:7860` | Smoke the default disabled admin boundary on a running local container. | repo/runtime | Requires a running container or service at the target URL. Mutating admin actions run only when explicitly enabled by env. |
+| `bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"` | Smoke a deployed Hugging Face Space. | live Space | Requires network, a reachable Space URL, and usually `OPS_TOKEN` from local/private environment. Do not paste real tokens into public logs or commits. |
+| `hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json` | Inspect Hugging Face repo/runtime state during release closeout. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
+
+## Global rules
+
+- Treat `hfs-dev.toml` as the machine-readable contract. Keep it aligned with
+  `README.md`, `Dockerfile`, `docker/nginx.conf`, `scripts/hf-space-smoke.sh`, and
+  `docs/hfs-alignment.md`.
+- Keep this repository in Pattern A shape. Do not add `cloud/hfs/README.md` or
+  `cloud/hfs/Dockerfile`.
+- Do not vendor upstream QwenPaw source unless the runtime mode is intentionally
+  changed away from `artifact-at-build-time`.
+- `QWENPAW_UPSTREAM_REF` is audit metadata in the current runtime mode. It must not
+  become a hidden source-fetch mechanism without updating the declared runtime mode and
+  docs.
+- If `QWENPAW_VERSION` changes, update `QWENPAW_PACKAGE_SHA256` at the same time and
+  keep release pin docs and validators consistent.
+- Release builds must use an immutable `BASE_IMAGE_REF` digest. Mutable base tags are
+  acceptable only for local development builds.
+- The public Space port is `7860`. QwenPaw runs internally on `8088`; ops-service runs
+  on `8081`; admin-service runs on `8082`.
+- Runtime persistence belongs under `/data/qwenpaw/*`; logs belong under
+  `/data/var/logs`; pid files, sockets, and transient Nginx/Supervisor files belong
+  under `/tmp/qwenpaw-run`.
+- Build steps must not depend on `/data`; persistent storage exists only at runtime.
+- `/_ops` must remain read-only. Public `/healthz` and `/readyz` route to ops health
+  endpoints, but protected ops endpoints require `OPS_TOKEN`.
+- `/_ops/config` may report secret presence booleans only. Never return secret values.
+- `/_admin` must remain disabled by default. When enabled, mutating actions must remain
+  whitelisted, token-protected, CSRF-protected, confirmation-gated, and audited.
+- Keep Nginx as the single public-port front door. Do not expose internal service ports
+  directly.
+- Keep the container compatible with Hugging Face Docker Spaces and rootless runtime
+  assumptions. Preserve user `1000` ownership for copied runtime files and writable
+  directories unless there is a verified reason to change it.
+- Prefer small, auditable Bash/Python stdlib changes over adding new dependencies.
+- If adding a new long-term dependency, explain why existing OS packages, Python stdlib,
+  Bash, or current image contents are insufficient.
+- Documentation changes must be consistent with actual scripts/configs. Do not document
+  commands or endpoints that are not present in the repository.
+- Keep `local/`, `.env.local`, screenshots, database files, logs, exported secrets, and
+  browser verification records local-only.
+
+## Do not
+
+- Do not commit `.env`, `.env.local`, `.env.*` other than `.env.example`, API keys,
+  provider tokens, admin credentials, Hugging Face secrets, local databases, logs,
+  screenshots, or runtime exports.
+- Do not include real internal URLs, private deployment records, token values, browser
+  session state, account names, prompts, memory contents, or customer/personal data in
+  commits, docs, CI logs, PR text, or screenshots.
+- Do not stage ignored `local/`, `.codex/`, `data/`, `logs/`, `*.secret`, `*.key`,
+  `*.pem`, `*.sqlite`, `*.db`, or `*.log` files.
+- Do not move the Space package into `cloud/hfs/`.
+- Do not silently change the HFS pattern, runtime mode, ports, health endpoints, or
+  persistence layout without updating `hfs-dev.toml`, docs, scripts, and validation.
+- Do not make `/_ops` mutating or add request-supplied command execution to ops.
+- Do not broaden `/_admin` into a shell, arbitrary command runner, package installer,
+  file editor, or secret viewer.
+- Do not enable `ADMIN_ENABLED=true` by default.
+- Do not weaken token comparisons, remove security headers, or log token values.
+- Do not replace the smoke script with checks that only test Nginx while skipping the app
+  root and ops/admin boundaries.
+- Do not treat `git push` or Space repo SHA update as proof that the running Space has
+  taken over. Runtime `raw.sha`, runtime `stage`, and endpoint smoke are separate checks.
+- Do not run deployment, push, merge, publish, or permission-changing commands unless the
+  user explicitly asks for that operation.
+
+## Validation
+
+Default validation after any repository change:
+
+1. `bash scripts/static-check.sh`
+2. `bash scripts/validate-hfs-contract.sh`
+3. `git diff --check`
+
+For `docker/` runtime changes, also consider the targeted syntax checks while iterating:
 
 ```bash
+bash -n docker/entrypoint.sh
+bash -n docker/healthcheck.sh
+bash -n scripts/admin-smoke.sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/ops_service.py docker/admin_service.py
+```
+
+For `scripts/` changes, also consider:
+
+```bash
+bash -n scripts/hf-space-smoke.sh
+bash -n scripts/admin-smoke.sh
+bash -n scripts/local-build.sh
+bash -n scripts/local-run.sh
+```
+
+For Docker/runtime behavior changes, run a local build/run/smoke when Docker and network
+are available:
+
+```bash
+bash scripts/local-build.sh
+OPS_TOKEN=dev-ops-token bash scripts/local-run.sh
 OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860
 ```
+
+If Docker, network, credentials, or a running Space are unavailable, state exactly which
+runtime checks were skipped and which static checks passed.
+
+For release/deployment closeout requested by the user, validate all states separately:
+
+```text
+local HEAD == origin/main == hf/main
+GitHub static-check succeeded for HEAD
+Hugging Face repo sha == HEAD
+Hugging Face runtime.raw.sha == HEAD
+Hugging Face runtime.stage == RUNNING
+live smoke passed
+worktree has no uncommitted tracked changes
+```
+
+## Notes for future agents
+
+- This is not the upstream QwenPaw product source. Product-level behavior changes usually
+  belong upstream, not in this HFS port package.
+- The repository has no JavaScript package manager or Python packaging metadata for local
+  app development. Commands come from shell scripts, Dockerfile, docs, and CI.
+- `.github/workflows/static-check.yml` runs only `bash scripts/static-check.sh`; keep that
+  script as the strongest no-Docker local gate.
+- `scripts/static-check.sh` may use an external SKY-Prompt HFS alignment checker when it
+  is mounted nearby. The repository-local contract must still be valid without that
+  external checkout.

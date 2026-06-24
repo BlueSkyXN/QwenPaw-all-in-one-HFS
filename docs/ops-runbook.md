@@ -13,6 +13,7 @@ Use this runbook after the Space has built or when a live smoke check fails. Pre
 /_ops/readyz        protected readiness
 /_ops/status        Supervisor process status
 /_ops/system        safe system summary
+/_ops/persistence   /data and QwenPaw persistence summary
 /_ops/config        safe config summary
 /_ops/version       build pins and runtime metadata
 /_ops/logs          whitelisted log tail
@@ -26,6 +27,8 @@ Protected endpoints require:
 X-Ops-Token: <OPS_TOKEN>
 Authorization: Bearer <OPS_TOKEN>
 ```
+
+Browser access can use `/_ops/?token=<OPS_TOKEN>`. A valid query token is exchanged for a signed HttpOnly cookie scoped to `/_ops/`, then redirected to `/_ops/` without the token in the URL. Use headers for scripts.
 
 ## Standard Triage
 
@@ -49,6 +52,7 @@ Check protected status:
 
 ```bash
 curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/status"
+curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/persistence"
 curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/version"
 curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/config"
 ```
@@ -110,6 +114,11 @@ curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/logs?service=qwenpa
 ### Persistent data is missing after restart
 
 Persistent Storage may not be enabled. The runtime writes `/data/.qwenpaw_hfs_persistent_storage_probe` when `/data` is writable.
+Confirm with:
+
+```bash
+curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/persistence"
+```
 
 ### Browser-related skills fail
 
@@ -122,3 +131,16 @@ This usually means the Space is using a fresh or lost `/data` volume. Confirm Pe
 ### `/_admin/` returns 404
 
 This is the default safe state. `scripts/hf-space-smoke.sh` treats `401`, `403` or `404` as acceptable admin boundary responses. Enable admin only for explicit maintenance windows.
+
+### Admin maintenance window
+
+When `ADMIN_ENABLED=true`, verify the control plane with:
+
+```bash
+ADMIN_EXPECTED_ENABLED=true \
+ADMIN_TOKEN=$ADMIN_TOKEN \
+ADMIN_CSRF_TOKEN=$ADMIN_CSRF_TOKEN \
+bash scripts/admin-smoke.sh "$SMOKE_BASE_URL"
+```
+
+The smoke checks root access, token failures, `/_admin/api/status`, `/_admin/api/actions`, `/_admin/api/audit`, CSRF enforcement and `confirm=true`. It does not execute `run-health-checks` unless `ADMIN_SMOKE_ACTIONS=true`.

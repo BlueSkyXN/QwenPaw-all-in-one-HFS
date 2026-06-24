@@ -4,25 +4,25 @@
 # Pattern A / artifact-at-build-time.
 #
 # Development:
-#   docker build -t qwenpaw-all-in-one-hfs:dev --build-arg QWENPAW_VERSION=1.1.9 .
+#   docker build -t qwenpaw-all-in-one-hfs:dev --build-arg QWENPAW_VERSION=1.1.12.post2 .
 #
 # Release-style:
 #   docker build \
 #     --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-#     --build-arg QWENPAW_VERSION='1.1.9' \
-#     --build-arg QWENPAW_PACKAGE_SHA256='73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63' \
+#     --build-arg QWENPAW_VERSION='1.1.12.post2' \
+#     --build-arg QWENPAW_PACKAGE_SHA256='c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' \
 #     --build-arg UV_VERSION='0.7.20' \
-#     --build-arg QWENPAW_UPSTREAM_REF='2d9527bb097f9b09428190f80e1f3fd44f2ff453' \
+#     --build-arg QWENPAW_UPSTREAM_REF='09fc515c88a5e817870e6b975e66b5be81893e03' \
 #     -t qwenpaw-all-in-one-hfs:release .
 
 ARG BASE_IMAGE_REF=node:22-slim
 FROM ${BASE_IMAGE_REF} AS runtime
 
 ARG BASE_IMAGE_REF
-ARG QWENPAW_VERSION=1.1.9
-ARG QWENPAW_PACKAGE_SHA256=73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63
+ARG QWENPAW_VERSION=1.1.12.post2
+ARG QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a
 ARG UV_VERSION=0.7.20
-ARG QWENPAW_UPSTREAM_REF=2d9527bb097f9b09428190f80e1f3fd44f2ff453
+ARG QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03
 ARG DEBIAN_FRONTEND=noninteractive
 
 ENV QWENPAW_HFS_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF}

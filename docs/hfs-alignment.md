@@ -45,7 +45,7 @@ UV_VERSION                     uv installer version
 QWENPAW_UPSTREAM_REF           metadata only
 ```
 
-The default build pins `qwenpaw==1.1.9` to wheel SHA256 `73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63` and upstream tag commit `2d9527bb097f9b09428190f80e1f3fd44f2ff453`. If the package version changes, update both records.
+The default build pins `qwenpaw==1.1.12.post2` to wheel SHA256 `c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a` and upstream tag commit `09fc515c88a5e817870e6b975e66b5be81893e03`. If the package version changes, update both records.
 
 ## Shared Runtime Contract
 

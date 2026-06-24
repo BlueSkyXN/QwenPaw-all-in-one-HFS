@@ -21,7 +21,7 @@ It is not the upstream QwenPaw product source. It maintains the Hugging Face Spa
 - Supervisor process layout
 - `/data` persistence boundary
 - read-only `/_ops` diagnostics
-- disabled-by-default `/_admin` management shell
+- disabled-by-default `/_admin` management surface
 - smoke/static checks and HFS alignment documentation
 
 ## Project Links
@@ -157,8 +157,8 @@ Development build:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_VERSION=1.1.9 \
-  --build-arg QWENPAW_PACKAGE_SHA256=73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63 \
+  --build-arg QWENPAW_VERSION=1.1.12.post2 \
+  --build-arg QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a \
   .
 ```
 
@@ -168,14 +168,14 @@ Release-style build:
 docker build \
   -t qwenpaw-all-in-one-hfs:release \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-  --build-arg QWENPAW_VERSION='1.1.9' \
-  --build-arg QWENPAW_PACKAGE_SHA256='73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63' \
+  --build-arg QWENPAW_VERSION='1.1.12.post2' \
+  --build-arg QWENPAW_PACKAGE_SHA256='c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' \
   --build-arg UV_VERSION='0.7.20' \
-  --build-arg QWENPAW_UPSTREAM_REF='2d9527bb097f9b09428190f80e1f3fd44f2ff453' \
+  --build-arg QWENPAW_UPSTREAM_REF='09fc515c88a5e817870e6b975e66b5be81893e03' \
   .
 ```
 
-`QWENPAW_PACKAGE_SHA256` is the verified PyPI wheel hash for `qwenpaw==1.1.9`. If you change `QWENPAW_VERSION`, update the hash at the same time.
+`QWENPAW_PACKAGE_SHA256` is the verified PyPI wheel hash for `qwenpaw==1.1.12.post2`. If you change `QWENPAW_VERSION`, update the hash at the same time.
 
 ## Local Run
 
@@ -219,6 +219,7 @@ Protected read-only diagnostics:
 /_ops/readyz
 /_ops/status
 /_ops/system
+/_ops/persistence
 /_ops/config
 /_ops/version
 /_ops/logs?service=qwenpaw
@@ -234,6 +235,7 @@ Authorization: Bearer <OPS_TOKEN>
 ```
 
 Browser diagnostics may use `/_ops/?token=<OPS_TOKEN>` and will only show a basic read-only dashboard.
+After successful token validation, the service sets a signed HttpOnly cookie for `/_ops/` and redirects to a URL without the token query string.
 
 ## Admin Surface
 
@@ -248,10 +250,12 @@ ADMIN_CSRF_TOKEN=<strong-random-csrf-token>
 Mutating API calls require token authentication, `X-CSRF-Token: <ADMIN_CSRF_TOKEN>` and `confirm=true`. Supported actions are intentionally narrow:
 
 ```text
+GET  /_admin/api/status
+GET  /_admin/api/actions
+GET  /_admin/api/audit?limit=50
 POST /_admin/api/actions/restart-service
 POST /_admin/api/actions/reload-nginx
 POST /_admin/api/actions/run-health-checks
-GET  /_admin/api/audit?limit=50
 ```
 
 ## Validation
@@ -262,6 +266,12 @@ bash scripts/validate-hfs-contract.sh
 ```
 
 The static gate checks repository shape and Python/shell syntax only. It does not replace Docker build, Hugging Face runtime takeover or live endpoint smoke.
+
+For a running local container, also verify the default admin boundary:
+
+```bash
+ADMIN_EXPECTED_ENABLED=false bash scripts/admin-smoke.sh http://127.0.0.1:7860
+```
 
 For a deployed Space, run:
 

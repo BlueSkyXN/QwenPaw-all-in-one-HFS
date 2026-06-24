@@ -20,10 +20,10 @@ Configuration is split into four surfaces:
 Current default release pins:
 
 ```text
-QWENPAW_VERSION=1.1.9
-QWENPAW_PACKAGE_SHA256=73ff2ca8b22dbfd6d233b678fb1de040bb41a1bff8b2b4091ecde866e1e57f63
+QWENPAW_VERSION=1.1.12.post2
+QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a
 UV_VERSION=0.7.20
-QWENPAW_UPSTREAM_REF=2d9527bb097f9b09428190f80e1f3fd44f2ff453
+QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03
 ```
 
 ## Runtime Variables
@@ -43,6 +43,8 @@ QWENPAW_UPSTREAM_REF=2d9527bb097f9b09428190f80e1f3fd44f2ff453
 | `QWENPAW_ADMIN_PORT` | `8082` | Internal admin-service port |
 | `QWENPAW_OPS_LOG_DIR` | `/data/var/logs` | Log directory used by `/_ops/logs` |
 | `QWENPAW_ADMIN_AUDIT_LOG` | `/data/var/logs/admin-audit.jsonl` | Admin action audit log |
+| `OPS_SESSION_TTL_SECONDS` | `3600` | Signed browser session lifetime for `/_ops/` query-token migration |
+| `OPS_COOKIE_SECURE` | `auto` | Add `Secure` to `/_ops/` session cookies when forced or when `X-Forwarded-Proto=https` |
 
 Recommended Hugging Face Variables:
 
@@ -73,9 +75,9 @@ TELEGRAM_BOT_TOKEN=<optional>
 DISCORD_BOT_TOKEN=<optional>
 ```
 
-`OPS_TOKEN` protects `/_ops/status`, `/_ops/config`, `/_ops/version`, `/_ops/logs`, `/_ops/errors`, `/_ops/metrics` and browser diagnostics at `/_ops/?token=...`.
+`OPS_TOKEN` protects direct `/_ops/*` diagnostics including `/_ops/health`, `/_ops/healthz`, `/_ops/readyz`, `/_ops/status`, `/_ops/system`, `/_ops/persistence`, `/_ops/config`, `/_ops/version`, `/_ops/logs`, `/_ops/errors`, `/_ops/metrics` and browser diagnostics at `/_ops/?token=...`.
 
-Prefer `X-Ops-Token` or `Authorization: Bearer` for scripts. The query token form is only for manual browser diagnostics because it can land in browser history or intermediary logs.
+Prefer `X-Ops-Token` or `Authorization: Bearer` for scripts. The query token form is only for manual browser diagnostics; after validation it sets a signed HttpOnly cookie scoped to `/_ops/` and redirects to a URL without the token query string.
 
 ## Local `.env.local` Ledger
 
@@ -97,6 +99,8 @@ Suggested local-only secrets and test records:
 OPS_TOKEN=<same value configured in Hugging Face Space Settings>
 ADMIN_TOKEN=<only when ADMIN_ENABLED=true>
 ADMIN_CSRF_TOKEN=<only when ADMIN_ENABLED=true>
+ADMIN_EXPECTED_ENABLED=<true only for admin smoke>
+ADMIN_SMOKE_ACTIONS=<true only when run-health-checks should execute>
 QWENPAW_ADMIN_USERNAME=<first-run browser test username>
 QWENPAW_ADMIN_PASSWORD=<first-run browser test password>
 ```
