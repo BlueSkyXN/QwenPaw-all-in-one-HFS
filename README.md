@@ -47,10 +47,10 @@ Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 ## HFS Classification
 
 ```text
-Pattern: A — HFS Port Repository
-Runtime mode: artifact-at-build-time
+Pattern: A - HFS Port Repository
+Runtime mode: source-fetch
 Space root: repo root
-Source of truth: upstream QwenPaw PyPI package / upstream QwenPaw repository
+Source of truth: pinned upstream QwenPaw source commit
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 ```
 
@@ -157,8 +157,6 @@ Development build:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_VERSION=1.1.12.post2 \
-  --build-arg QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a \
   .
 ```
 
@@ -168,14 +166,13 @@ Release-style build:
 docker build \
   -t qwenpaw-all-in-one-hfs:release \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-  --build-arg QWENPAW_VERSION='1.1.12.post2' \
-  --build-arg QWENPAW_PACKAGE_SHA256='c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' \
+  --build-arg QWENPAW_SOURCE_REF='25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.0b1' \
   --build-arg UV_VERSION='0.7.20' \
-  --build-arg QWENPAW_UPSTREAM_REF='09fc515c88a5e817870e6b975e66b5be81893e03' \
   .
 ```
 
-`QWENPAW_PACKAGE_SHA256` is the verified PyPI wheel hash for `qwenpaw==1.1.12.post2`. If you change `QWENPAW_VERSION`, update the hash at the same time.
+The default build fetches upstream QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0`, validates that `src/qwenpaw/__version__.py` reports `2.0.0b1`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree.
 
 ## Local Run
 

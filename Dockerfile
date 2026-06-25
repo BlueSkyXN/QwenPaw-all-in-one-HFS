@@ -1,35 +1,35 @@
 # syntax=docker/dockerfile:1.7
 #
 # QwenPaw all-in-one HFS runtime image.
-# Pattern A / artifact-at-build-time.
+# Pattern A / source-fetch.
 #
 # Development:
-#   docker build -t qwenpaw-all-in-one-hfs:dev --build-arg QWENPAW_VERSION=1.1.12.post2 .
+#   docker build -t qwenpaw-all-in-one-hfs:dev .
 #
 # Release-style:
 #   docker build \
 #     --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-#     --build-arg QWENPAW_VERSION='1.1.12.post2' \
-#     --build-arg QWENPAW_PACKAGE_SHA256='c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' \
+#     --build-arg QWENPAW_SOURCE_REF='25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' \
+#     --build-arg QWENPAW_SOURCE_VERSION='2.0.0b1' \
 #     --build-arg UV_VERSION='0.7.20' \
-#     --build-arg QWENPAW_UPSTREAM_REF='09fc515c88a5e817870e6b975e66b5be81893e03' \
 #     -t qwenpaw-all-in-one-hfs:release .
 
 ARG BASE_IMAGE_REF=node:22-slim
 FROM ${BASE_IMAGE_REF} AS runtime
 
 ARG BASE_IMAGE_REF
-ARG QWENPAW_VERSION=1.1.12.post2
-ARG QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a
+ARG QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
+ARG QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0
+ARG QWENPAW_SOURCE_VERSION=2.0.0b1
 ARG UV_VERSION=0.7.20
-ARG QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03
 ARG DEBIAN_FRONTEND=noninteractive
 
 ENV QWENPAW_HFS_BUILD_BASE_IMAGE_REF=${BASE_IMAGE_REF}
-ENV QWENPAW_HFS_BUILD_QWENPAW_VERSION=${QWENPAW_VERSION}
-ENV QWENPAW_HFS_BUILD_QWENPAW_PACKAGE_SHA256=${QWENPAW_PACKAGE_SHA256}
+ENV QWENPAW_HFS_BUILD_RUNTIME_MODE=source-fetch
+ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REPO=${QWENPAW_SOURCE_REPO}
+ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REF=${QWENPAW_SOURCE_REF}
+ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_VERSION=${QWENPAW_SOURCE_VERSION}
 ENV QWENPAW_HFS_BUILD_UV_VERSION=${UV_VERSION}
-ENV QWENPAW_HFS_BUILD_QWENPAW_UPSTREAM_REF=${QWENPAW_UPSTREAM_REF}
 
 ENV NODE_ENV=production \
     PYTHONUNBUFFERED=1 \
@@ -91,17 +91,36 @@ RUN python3 -m venv /home/user/.venv \
        else \
          python -m pip install "uv==${UV_VERSION}"; \
        fi \
-    && mkdir -p /tmp/qwenpaw-dist \
-    && python -m pip download --no-deps --dest /tmp/qwenpaw-dist "qwenpaw==${QWENPAW_VERSION}" \
-    && artifact="$(find /tmp/qwenpaw-dist -maxdepth 1 -type f | sort | head -n 1)" \
-    && test -n "$artifact" \
-    && if [ -n "${QWENPAW_PACKAGE_SHA256}" ] && [ "${QWENPAW_PACKAGE_SHA256}" != "dev-placeholder" ]; then \
-         printf '%s  %s\n' "${QWENPAW_PACKAGE_SHA256}" "$artifact" | sha256sum -c -; \
+    && mkdir -p /tmp/qwenpaw-src \
+    && git init /tmp/qwenpaw-src \
+    && cd /tmp/qwenpaw-src \
+    && git remote add origin "${QWENPAW_SOURCE_REPO}" \
+    && if [ "${QWENPAW_SOURCE_REF}" = "main" ]; then \
+         git fetch --depth 1 origin main; \
+         git checkout --detach FETCH_HEAD; \
        else \
-         echo "WARNING: QWENPAW_PACKAGE_SHA256 is not set; development build is not release-pinned"; \
+         printf '%s' "${QWENPAW_SOURCE_REF}" | grep -Eq '^[0-9a-f]{40}$'; \
+         git fetch --depth 1 origin "${QWENPAW_SOURCE_REF}"; \
+         git checkout --detach "${QWENPAW_SOURCE_REF}"; \
+         test "$(git rev-parse HEAD)" = "${QWENPAW_SOURCE_REF}"; \
        fi \
-    && uv pip install --python /home/user/.venv/bin/python --no-cache-dir "$artifact" \
-    && rm -rf /tmp/qwenpaw-dist
+    && source_version="$(python -c "import runpy; print(runpy.run_path('src/qwenpaw/__version__.py')['__version__'])")" \
+    && test "${source_version}" = "${QWENPAW_SOURCE_VERSION}" \
+    && cd /tmp/qwenpaw-src/console \
+    && npm ci --no-audit --no-fund \
+    && npm run build \
+    && cd /tmp/qwenpaw-src \
+    && rm -rf src/qwenpaw/console/* \
+    && mkdir -p src/qwenpaw/console \
+    && cp -R console/dist/. src/qwenpaw/console/ \
+    && if [ -d website/public/docs ] && find website/public/docs -maxdepth 1 -name '*.md' | grep -q .; then \
+         rm -rf src/qwenpaw/docs; \
+         mkdir -p src/qwenpaw/docs; \
+         cp website/public/docs/*.md src/qwenpaw/docs/; \
+       fi \
+    && uv pip install --python /home/user/.venv/bin/python --no-cache-dir /tmp/qwenpaw-src \
+    && qwenpaw --version \
+    && rm -rf /tmp/qwenpaw-src /home/user/.npm
 
 COPY --chown=1000:1000 docker/ /home/user/app/docker/
 COPY --chown=1000:1000 hfs-dev.toml /home/user/app/hfs-dev.toml

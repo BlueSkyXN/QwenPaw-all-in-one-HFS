@@ -2,7 +2,7 @@
 
 Configuration is split into four surfaces:
 
-- Docker build args, which select and pin the upstream package artifact.
+- Docker build args, which select and pin the upstream source tree.
 - Hugging Face Space Variables, which are safe runtime defaults.
 - Hugging Face Space Secrets, which are sensitive runtime values.
 - Local `.env.local`, which records deployment metadata and private smoke/login values for maintainers.
@@ -12,18 +12,18 @@ Configuration is split into four surfaces:
 | Name | Purpose | Release rule |
 | --- | --- | --- |
 | `BASE_IMAGE_REF` | Base image | Pin digest for release; mutable tag is acceptable only during development |
-| `QWENPAW_VERSION` | QwenPaw package version installed during Docker build | Required |
-| `QWENPAW_PACKAGE_SHA256` | SHA256 of the selected QwenPaw package artifact | Required for release; changing `QWENPAW_VERSION` requires changing this too |
+| `QWENPAW_SOURCE_REPO` | Upstream QwenPaw Git repository fetched during Docker build | Required |
+| `QWENPAW_SOURCE_REF` | Upstream QwenPaw commit installed from source | Required; release builds must use a full commit SHA |
+| `QWENPAW_SOURCE_VERSION` | Expected `qwenpaw.__version__` value in the pinned source tree | Required; change when the upstream source version changes |
 | `UV_VERSION` | uv installer version | Pin for release |
-| `QWENPAW_UPSTREAM_REF` | Upstream QwenPaw commit/tag metadata | Record for audit; does not fetch source in this runtime mode |
 
 Current default release pins:
 
 ```text
-QWENPAW_VERSION=1.1.12.post2
-QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a
+QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
+QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0
+QWENPAW_SOURCE_VERSION=2.0.0b1
 UV_VERSION=0.7.20
-QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03
 ```
 
 ## Runtime Variables

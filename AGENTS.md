@@ -4,7 +4,7 @@
 
 This repository is the Hugging Face Docker Space delivery package for upstream QwenPaw.
 It is a Pattern A HFS Port Repository: the repository root is the Space root, and the
-runtime installs the upstream `qwenpaw` package artifact during Docker build.
+runtime fetches and installs the pinned upstream QwenPaw source tree during Docker build.
 
 ## Codex startup behavior
 
@@ -23,7 +23,7 @@ runtime installs the upstream `qwenpaw` package artifact during Docker build.
 
 ```text
 Pattern: A - HFS Port Repository
-Runtime mode: artifact-at-build-time
+Runtime mode: source-fetch
 Space root: repo root
 Public port: 7860
 Internal app port: 8088
@@ -41,7 +41,7 @@ Space package surface.
 |---|---|---:|---|
 | `AGENTS.md` | Startup router, directory map, command index, repository-wide boundaries | No | Update when repository structure, commands, or local cards change |
 | `README.md` | Hugging Face Space card plus human maintainer overview | No | Updating Space metadata, public quick start, or documented runtime shape |
-| `Dockerfile` | Root Docker Space build, upstream artifact install, release pin environment | No | Changing base image, package pins, OS packages, build args, ports, copied files, healthcheck, user, or entrypoint |
+| `Dockerfile` | Root Docker Space build, upstream source fetch/install, release pin environment | No | Changing base image, source pins, OS packages, build args, ports, copied files, healthcheck, user, or entrypoint |
 | `hfs-dev.toml` | Machine-readable HFS contract and release pin metadata | No | Changing HFS pattern, runtime mode, required files, ports, health endpoints, or release pins |
 | `.dockerignore` | Docker build context boundary and secret/local exclusions | No | Changing what can enter the Space build context |
 | `.gitignore` | Git working tree exclusions for local secrets, runtime data, caches, and ignored mirrors | No | Changing local/private file handling |
@@ -76,7 +76,7 @@ additional commands without checking real files first.
 |---|---|---|---|
 | `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, Python compile checks, and removes generated `__pycache__` folders. | repo | No Docker or network required. Requires `bash` and `python3`. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
 | `bash scripts/validate-hfs-contract.sh` | Validate Pattern A repo shape, `hfs-dev.toml`, Space metadata, release pins, routing/security invariants, ignored secret patterns, and smoke coverage. | repo | No Docker or network required. Requires `python3` with `tomllib`, plus standard shell tools. |
-| `python3 scripts/check-qwenpaw-pins.py` | Networked release check that compares Dockerfile `QWENPAW_VERSION`, wheel SHA256, and upstream tag ref against PyPI and upstream QwenPaw. | release pins | Requires network, `curl`, `git`, and access to PyPI/GitHub. Not part of the default static gate. |
+| `python3 scripts/check-qwenpaw-pins.py` | Networked release check that fetches Dockerfile `QWENPAW_SOURCE_REF` from upstream QwenPaw and verifies the expected source version. | release pins | Requires network, `git`, and access to GitHub. Not part of the default static gate. |
 | `git diff --check` | Whitespace/error check before publishing changes. | repo | Read-only Git check. |
 | `bash -n docker/entrypoint.sh` | Targeted shell syntax check for runtime entrypoint edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
 | `bash -n docker/healthcheck.sh` | Targeted shell syntax check for container healthcheck edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
@@ -99,13 +99,10 @@ additional commands without checking real files first.
   `docs/hfs-alignment.md`.
 - Keep this repository in Pattern A shape. Do not add `cloud/hfs/README.md` or
   `cloud/hfs/Dockerfile`.
-- Do not vendor upstream QwenPaw source unless the runtime mode is intentionally
-  changed away from `artifact-at-build-time`.
-- `QWENPAW_UPSTREAM_REF` is audit metadata in the current runtime mode. It must not
-  become a hidden source-fetch mechanism without updating the declared runtime mode and
-  docs.
-- If `QWENPAW_VERSION` changes, update `QWENPAW_PACKAGE_SHA256` at the same time and
-  keep release pin docs and validators consistent.
+- Do not vendor upstream QwenPaw source into this repository. The `source-fetch` runtime
+  must fetch the pinned upstream commit during Docker build.
+- If `QWENPAW_SOURCE_REF` changes, update `QWENPAW_SOURCE_VERSION` when needed and keep
+  release pin docs and validators consistent.
 - Release builds must use an immutable `BASE_IMAGE_REF` digest. Mutable base tags are
   acceptable only for local development builds.
 - The public Space port is `7860`. QwenPaw runs internally on `8088`; ops-service runs
@@ -210,7 +207,7 @@ worktree has no uncommitted tracked changes
 ## Notes for future agents
 
 - This is not the upstream QwenPaw product source. Product-level behavior changes usually
-  belong upstream, not in this HFS port package.
+  belong upstream, then this HFS port should advance `QWENPAW_SOURCE_REF`.
 - The repository has no JavaScript package manager or Python packaging metadata for local
   app development. Commands come from shell scripts, Dockerfile, docs, and CI.
 - `.github/workflows/static-check.yml` runs only `bash scripts/static-check.sh`; keep that

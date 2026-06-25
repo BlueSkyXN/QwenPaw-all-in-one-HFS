@@ -6,9 +6,9 @@
 
 ```text
 Pattern A: HFS Port Repository
-Runtime mode: artifact-at-build-time
+Runtime mode: source-fetch
 Space root: repo root
-Source of truth: QwenPaw PyPI release / upstream QwenPaw repository
+Source of truth: pinned upstream QwenPaw source commit
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 Alignment manifest: hfs-dev.toml
 ```
@@ -33,19 +33,19 @@ cloud/hfs/Dockerfile
 
 ## Runtime Mode
 
-The runtime mode is `artifact-at-build-time`: Docker build installs the selected `qwenpaw` package artifact.
+The runtime mode is `source-fetch`: Docker build fetches a pinned upstream QwenPaw commit, builds the console frontend assets, copies them into the Python package source tree, and installs QwenPaw from that source.
 
 Release pins:
 
 ```text
 BASE_IMAGE_REF                 image digest required for release
-QWENPAW_VERSION                package version
-QWENPAW_PACKAGE_SHA256         package artifact SHA256
+QWENPAW_SOURCE_REPO            upstream source repository
+QWENPAW_SOURCE_REF             upstream source commit SHA
+QWENPAW_SOURCE_VERSION         expected qwenpaw.__version__
 UV_VERSION                     uv installer version
-QWENPAW_UPSTREAM_REF           metadata only
 ```
 
-The default build pins `qwenpaw==1.1.12.post2` to wheel SHA256 `c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a` and upstream tag commit `09fc515c88a5e817870e6b975e66b5be81893e03`. If the package version changes, update both records.
+The default build pins upstream QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0` and expects source version `2.0.0b1`. If the source commit changes, update the expected source version when needed.
 
 ## Shared Runtime Contract
 
@@ -65,6 +65,6 @@ Current implementation covers:
 | Static gate | `scripts/static-check.sh` and `scripts/validate-hfs-contract.sh` |
 | Smoke | `scripts/hf-space-smoke.sh` |
 
-## Fallback Path
+## Source Fetch Boundary
 
-If the PyPI artifact lacks required static assets or runtime resources, change runtime mode to `source-fetch` and pin `QWENPAW_REF` to an upstream commit SHA. Do not silently keep `artifact-at-build-time` while building from source.
+Do not vendor upstream QwenPaw into this repository. Product behavior belongs upstream; this HFS port advances by changing `QWENPAW_SOURCE_REF`, validating `QWENPAW_SOURCE_VERSION`, and rebuilding the Space.

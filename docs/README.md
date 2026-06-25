@@ -6,14 +6,14 @@ This directory documents the deployable Hugging Face Docker Space package. It is
 
 ```text
 Pattern: A - HFS Port Repository
-Runtime mode: artifact-at-build-time
+Runtime mode: source-fetch
 Space root: repository root
 Public port: 7860
 Primary runtime: QwenPaw behind Nginx and Supervisor
 Persistence boundary: /data/qwenpaw/*
 ```
 
-The upstream product source is not vendored here. This repository owns the HFS runtime glue, docs, smoke checks and release pins.
+The upstream product source is not vendored here. The Docker build fetches the pinned upstream source commit and this repository owns the HFS runtime glue, docs, smoke checks and release pins.
 
 ## Reading Order
 

@@ -1,6 +1,6 @@
 # Architecture
 
-QwenPaw is served as a multi-process Docker Space behind one public Nginx port. The upstream package is installed at build time; this repository provides the runtime glue around it.
+QwenPaw is served as a multi-process Docker Space behind one public Nginx port. The pinned upstream source tree is fetched and installed at build time; this repository provides the runtime glue around it.
 
 ## Process Topology
 
@@ -29,19 +29,22 @@ dbus-run-session -- qwenpaw app --host 127.0.0.1 --port 8088
 
 Xvfb provides a display for browser/desktop capabilities.
 
-## Build-Time Artifact Flow
+## Build-Time Source Flow
 
 ```text
 Docker build
   ├─ starts from BASE_IMAGE_REF
   ├─ installs OS/runtime packages
   ├─ installs uv
-  ├─ downloads qwenpaw==QWENPAW_VERSION
-  ├─ verifies QWENPAW_PACKAGE_SHA256
+  ├─ fetches QWENPAW_SOURCE_REF from QWENPAW_SOURCE_REPO
+  ├─ verifies QWENPAW_SOURCE_VERSION from src/qwenpaw/__version__.py
+  ├─ builds console frontend assets
+  ├─ copies console/dist into src/qwenpaw/console
+  ├─ installs QwenPaw from the fetched source tree
   └─ copies docker/ runtime glue
 ```
 
-`QWENPAW_UPSTREAM_REF` is audit metadata in this runtime mode. If future runtime behavior requires building from upstream source, change the declared runtime mode instead of silently mixing source-fetch into artifact-at-build-time.
+The current pinned source is QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0` with source version `2.0.0b1`.
 
 ## Persistence Boundary
 

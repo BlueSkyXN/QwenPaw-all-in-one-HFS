@@ -273,9 +273,10 @@ def version_info() -> dict[str, Any]:
         "uptime_seconds": round(time.time() - STARTED_AT, 3),
         "release_pins": {
             "BASE_IMAGE_REF": os.environ.get("QWENPAW_AIO_BUILD_BASE_IMAGE_REF", os.environ.get("QWENPAW_HFS_BUILD_BASE_IMAGE_REF", "")),
-            "QWENPAW_VERSION": os.environ.get("QWENPAW_AIO_BUILD_QWENPAW_VERSION", os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_VERSION", "")),
-            "QWENPAW_PACKAGE_SHA256_present": bool(os.environ.get("QWENPAW_AIO_BUILD_QWENPAW_PACKAGE_SHA256", os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_PACKAGE_SHA256", ""))),
-            "QWENPAW_UPSTREAM_REF": os.environ.get("QWENPAW_AIO_BUILD_QWENPAW_UPSTREAM_REF", os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_UPSTREAM_REF", "")),
+            "QWENPAW_RUNTIME_MODE": os.environ.get("QWENPAW_HFS_BUILD_RUNTIME_MODE", ""),
+            "QWENPAW_SOURCE_REPO": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REPO", ""),
+            "QWENPAW_SOURCE_REF": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REF", ""),
+            "QWENPAW_SOURCE_VERSION": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_VERSION", ""),
             "UV_VERSION": os.environ.get("QWENPAW_AIO_BUILD_UV_VERSION", os.environ.get("QWENPAW_HFS_BUILD_UV_VERSION", "")),
         },
         "space": {

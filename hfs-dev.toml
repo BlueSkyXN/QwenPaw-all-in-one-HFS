@@ -1,7 +1,7 @@
 schema_version = 2
 standard = "hfs-dev"
 pattern = "A"
-runtime_mode = "artifact-at-build-time"
+runtime_mode = "source-fetch"
 space_root_mode = "repo-root"
 hfs_dir = "."
 public_port = 7860
@@ -28,21 +28,29 @@ release_requires_digest = true
 description = "Release builds must use an immutable base image digest."
 
 [[release_pins]]
-name = "QWENPAW_VERSION"
+name = "QWENPAW_SOURCE_REPO"
+type = "metadata"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+description = "Upstream QwenPaw Git repository fetched during Docker build."
+
+[[release_pins]]
+name = "QWENPAW_SOURCE_REF"
+type = "git_ref"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_commit_sha = true
+description = "Upstream QwenPaw commit SHA fetched and installed from source during Docker build."
+
+[[release_pins]]
+name = "QWENPAW_SOURCE_VERSION"
 type = "package_version"
 source = "Dockerfile ARG"
 required_for_release = true
 dev_mutable_default_allowed = false
-description = "QwenPaw package version selected at build time."
-
-[[release_pins]]
-name = "QWENPAW_PACKAGE_SHA256"
-type = "checksum"
-source = "Dockerfile ARG / release checklist"
-required_for_release = true
-dev_mutable_default_allowed = false
-release_requires_checksum = true
-description = "SHA256 for the qwenpaw package artifact selected by QWENPAW_VERSION."
+description = "Expected qwenpaw.__version__ value in the pinned upstream source tree."
 
 [[release_pins]]
 name = "UV_VERSION"
@@ -50,13 +58,4 @@ type = "package_version"
 source = "Dockerfile ARG"
 required_for_release = true
 dev_mutable_default_allowed = true
-description = "uv version used for package installation."
-
-[[release_pins]]
-name = "QWENPAW_UPSTREAM_REF"
-type = "metadata"
-source = "Dockerfile ARG / release record"
-required_for_release = false
-dev_mutable_default_allowed = true
-metadata_only = true
-description = "Human-readable upstream repository commit or tag for audit only."
+description = "uv version used for source package installation."

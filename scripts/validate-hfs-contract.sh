@@ -88,7 +88,7 @@ expected = {
     "schema_version": 2,
     "standard": "hfs-dev",
     "pattern": "A",
-    "runtime_mode": "artifact-at-build-time",
+    "runtime_mode": "source-fetch",
     "space_root_mode": "repo-root",
     "hfs_dir": ".",
     "public_port": 7860,
@@ -106,10 +106,10 @@ if "release_pin_surfaces" in manifest:
 release_pins = manifest.get("release_pins")
 expected_pins = {
     "BASE_IMAGE_REF": {"type": "image_ref", "required_for_release": True, "dev_mutable_default_allowed": True, "release_requires_digest": True},
-    "QWENPAW_VERSION": {"type": "package_version", "required_for_release": True, "dev_mutable_default_allowed": False},
-    "QWENPAW_PACKAGE_SHA256": {"type": "checksum", "required_for_release": True, "dev_mutable_default_allowed": False, "release_requires_checksum": True},
+    "QWENPAW_SOURCE_REPO": {"type": "metadata", "required_for_release": True, "dev_mutable_default_allowed": True},
+    "QWENPAW_SOURCE_REF": {"type": "git_ref", "required_for_release": True, "dev_mutable_default_allowed": True, "release_requires_commit_sha": True},
+    "QWENPAW_SOURCE_VERSION": {"type": "package_version", "required_for_release": True, "dev_mutable_default_allowed": False},
     "UV_VERSION": {"type": "package_version", "required_for_release": True, "dev_mutable_default_allowed": True},
-    "QWENPAW_UPSTREAM_REF": {"type": "metadata", "required_for_release": False, "dev_mutable_default_allowed": True, "metadata_only": True},
 }
 
 if not isinstance(release_pins, list) or not release_pins:
@@ -191,21 +191,28 @@ if [ -f cloud/hfs/README.md ] || [ -f cloud/hfs/Dockerfile ]; then
 fi
 
 require_grep 'Pattern A: HFS Port Repository' docs/hfs-alignment.md "docs/hfs-alignment.md must declare Pattern A"
-require_grep 'Runtime mode: artifact-at-build-time' docs/hfs-alignment.md "docs/hfs-alignment.md must declare artifact-at-build-time runtime mode"
+require_grep 'Runtime mode: source-fetch' docs/hfs-alignment.md "docs/hfs-alignment.md must declare source-fetch runtime mode"
 require_grep 'Space root: repo root' docs/hfs-alignment.md "docs/hfs-alignment.md must declare repo root as Space root"
 
 require_grep '^ARG BASE_IMAGE_REF=' Dockerfile "Dockerfile must expose BASE_IMAGE_REF build input"
-require_grep '^ARG QWENPAW_VERSION=' Dockerfile "Dockerfile must expose QWENPAW_VERSION build input"
-require_grep '^ARG QWENPAW_PACKAGE_SHA256=' Dockerfile "Dockerfile must expose QWENPAW_PACKAGE_SHA256 build input"
+require_grep '^ARG QWENPAW_SOURCE_REPO=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_REPO build input"
+require_grep '^ARG QWENPAW_SOURCE_REF=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_REF build input"
+require_grep '^ARG QWENPAW_SOURCE_VERSION=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_VERSION build input"
 require_grep '^ARG UV_VERSION=' Dockerfile "Dockerfile must expose UV_VERSION build input"
-require_grep '^ARG QWENPAW_UPSTREAM_REF=' Dockerfile "Dockerfile must expose QWENPAW_UPSTREAM_REF build input"
 require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile "Dockerfile must select base runtime image from BASE_IMAGE_REF"
-require_grep 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must install QwenPaw from QWENPAW_VERSION"
-require_grep 'QWENPAW_VERSION=1\.1\.12\.post2' Dockerfile "Dockerfile must default to the verified qwenpaw 1.1.12.post2 release"
-require_grep 'QWENPAW_PACKAGE_SHA256=c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a' Dockerfile "Dockerfile must default to the verified qwenpaw 1.1.12.post2 wheel SHA256"
-require_grep 'QWENPAW_UPSTREAM_REF=09fc515c88a5e817870e6b975e66b5be81893e03' Dockerfile "Dockerfile must record the verified upstream v1.1.12.post2 commit"
-require_grep 'pypi.org/pypi/qwenpaw/json' scripts/check-qwenpaw-pins.py "pin checker must compare against PyPI package metadata"
-require_grep 'git_remote_tag_commit' scripts/check-qwenpaw-pins.py "pin checker must compare QWENPAW_UPSTREAM_REF against upstream tag metadata"
+require_grep 'QWENPAW_SOURCE_REPO=https://github\.com/agentscope-ai/QwenPaw\.git' Dockerfile "Dockerfile must default to the upstream QwenPaw source repository"
+require_grep 'QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' Dockerfile "Dockerfile must default to the requested upstream source commit"
+require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.0b1' Dockerfile "Dockerfile must default to the requested upstream source version"
+require_grep 'git fetch --depth 1 origin "\${QWENPAW_SOURCE_REF}"' Dockerfile "Dockerfile must fetch the pinned upstream source ref"
+require_grep 'src/qwenpaw/__version__\.py' Dockerfile "Dockerfile must validate the upstream source version"
+require_grep 'npm ci --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend dependencies"
+require_grep 'npm run build' Dockerfile "Dockerfile must build the console frontend from source"
+require_grep 'src/qwenpaw/console' Dockerfile "Dockerfile must copy console assets into the Python package source"
+require_grep '/tmp/qwenpaw-src' Dockerfile "Dockerfile must install QwenPaw from fetched source"
+require_absent 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must not install QwenPaw from PyPI package version in source-fetch mode"
+require_absent '^ARG QWENPAW_PACKAGE_SHA256=' Dockerfile "Dockerfile must not expose PyPI artifact checksum in source-fetch mode"
+require_grep 'fetch_source_ref' scripts/check-qwenpaw-pins.py "pin checker must fetch and validate the upstream source ref"
+require_grep 'QWENPAW_SOURCE_VERSION matches upstream source' scripts/check-qwenpaw-pins.py "pin checker must validate upstream source version"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"
 require_absent '^FROM \${DIFY_' Dockerfile "QwenPaw HFS must not select Dify images"
@@ -241,4 +248,4 @@ if [ "$errors" -gt 0 ]; then
   exit 1
 fi
 
-printf 'PASS hfs-contract: Pattern A artifact-at-build-time contract is structurally valid\n'
+printf 'PASS hfs-contract: Pattern A source-fetch contract is structurally valid\n'

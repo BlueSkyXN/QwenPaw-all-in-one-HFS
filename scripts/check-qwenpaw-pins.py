@@ -4,23 +4,26 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_QWENPAW_REMOTE = "https://github.com/agentscope-ai/QwenPaw.git"
-PYPI_JSON_URL = "https://pypi.org/pypi/qwenpaw/json"
+VERSION_FILE = "src/qwenpaw/__version__.py"
 
 
 class CheckError(RuntimeError):
     pass
 
 
-def run_text(args: list[str], *, timeout: int = 45) -> str:
+def run_text(args: list[str], *, cwd: Path | None = None, timeout: int = 60) -> str:
     proc = subprocess.run(
         args,
+        cwd=cwd,
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -42,42 +45,6 @@ def dockerfile_args(path: Path) -> dict[str, str]:
     return args
 
 
-def pypi_payload() -> dict[str, Any]:
-    # Use curl instead of urllib so the check follows the system CA bundle on macOS.
-    output = run_text(["curl", "-fsSL", "--max-time", "30", PYPI_JSON_URL], timeout=45)
-    return json.loads(output)
-
-
-def pypi_latest_version(payload: dict[str, Any]) -> str:
-    version = payload.get("info", {}).get("version")
-    if not isinstance(version, str) or not version:
-        raise CheckError("PyPI payload did not expose info.version")
-    return version
-
-
-def pypi_wheel_sha256(payload: dict[str, Any], version: str) -> str:
-    files = payload.get("releases", {}).get(version)
-    if not isinstance(files, list) or not files:
-        raise CheckError(f"PyPI payload did not expose files for qwenpaw=={version}")
-
-    wheels = [
-        file
-        for file in files
-        if isinstance(file, dict)
-        and file.get("packagetype") == "bdist_wheel"
-        and isinstance(file.get("filename"), str)
-        and file["filename"].endswith("-py3-none-any.whl")
-    ]
-    if len(wheels) != 1:
-        names = ", ".join(str(file.get("filename")) for file in wheels)
-        raise CheckError(f"Expected one py3-none-any wheel for qwenpaw=={version}, got {len(wheels)}: {names}")
-
-    digest = wheels[0].get("digests", {}).get("sha256")
-    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
-        raise CheckError(f"PyPI wheel for qwenpaw=={version} did not expose a sha256 digest")
-    return digest
-
-
 def git_remote_ref(remote: str, ref: str) -> str:
     output = run_text(["git", "ls-remote", remote, ref])
     for line in output.splitlines():
@@ -87,32 +54,37 @@ def git_remote_ref(remote: str, ref: str) -> str:
     raise CheckError(f"Unable to resolve {ref} from {remote}")
 
 
-def git_remote_tag_commit(remote: str, tag: str) -> str:
-    output = run_text(["git", "ls-remote", "--tags", remote, f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"])
-    tag_ref = ""
-    peeled_ref = ""
-    for line in output.splitlines():
-        parts = line.split()
-        if len(parts) != 2:
-            continue
-        if parts[1] == f"refs/tags/{tag}^{{}}":
-            peeled_ref = parts[0]
-        elif parts[1] == f"refs/tags/{tag}":
-            tag_ref = parts[0]
-    commit = peeled_ref or tag_ref
-    if not commit:
-        raise CheckError(f"Unable to resolve tag {tag} from {remote}")
-    return commit
+def fetch_source_ref(remote: str, ref: str) -> tuple[str, str]:
+    tmp = Path(tempfile.mkdtemp(prefix="qwenpaw-pin-check-"))
+    try:
+        run_text(["git", "init", "-q"], cwd=tmp)
+        run_text(["git", "remote", "add", "origin", remote], cwd=tmp)
+        if ref == "main":
+            run_text(["git", "fetch", "--depth", "1", "origin", "main"], cwd=tmp, timeout=120)
+            run_text(["git", "checkout", "--detach", "FETCH_HEAD"], cwd=tmp)
+        else:
+            if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                raise CheckError("QWENPAW_SOURCE_REF must be a 40-character lowercase commit SHA for release builds")
+            run_text(["git", "fetch", "--depth", "1", "origin", ref], cwd=tmp, timeout=120)
+            run_text(["git", "checkout", "--detach", ref], cwd=tmp)
+        resolved = run_text(["git", "rev-parse", "HEAD"], cwd=tmp).strip()
+        version_text = run_text(["git", "show", f"HEAD:{VERSION_FILE}"], cwd=tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    match = re.search(r"__version__\s*=\s*['\"]([^'\"]+)['\"]", version_text)
+    if not match:
+        raise CheckError(f"Unable to parse __version__ from {VERSION_FILE}")
+    return resolved, match.group(1)
 
 
 def check_equal(name: str, actual: str, expected: str, checks: list[dict[str, Any]]) -> None:
-    ok = actual == expected
-    checks.append({"name": name, "ok": ok, "actual": actual, "expected": expected})
+    checks.append({"name": name, "ok": actual == expected, "actual": actual, "expected": expected})
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Check QwenPaw HFS Dockerfile pins against PyPI and the upstream tag.",
+        description="Check QwenPaw HFS Dockerfile source pins against the upstream Git repository.",
     )
     parser.add_argument("--repo-root", default=Path(__file__).resolve().parents[1], type=Path)
     parser.add_argument("--qwenpaw-remote", default=DEFAULT_QWENPAW_REMOTE)
@@ -125,26 +97,29 @@ def main() -> int:
     notes: list[str] = []
 
     try:
-        payload = pypi_payload()
-        latest_version = pypi_latest_version(payload)
-        pinned_version = pins.get("QWENPAW_VERSION", "")
-        check_equal("QWENPAW_VERSION matches PyPI latest", pinned_version, latest_version, checks)
+        source_repo = pins.get("QWENPAW_SOURCE_REPO", "")
+        source_ref = pins.get("QWENPAW_SOURCE_REF", "")
+        source_version = pins.get("QWENPAW_SOURCE_VERSION", "")
 
-        if pinned_version:
-            wheel_sha = pypi_wheel_sha256(payload, pinned_version)
-            check_equal("QWENPAW_PACKAGE_SHA256 matches PyPI wheel", pins.get("QWENPAW_PACKAGE_SHA256", ""), wheel_sha, checks)
+        check_equal("QWENPAW_SOURCE_REPO matches expected upstream", source_repo, args.qwenpaw_remote, checks)
+        if not source_ref:
+            raise CheckError("Dockerfile did not set QWENPAW_SOURCE_REF")
+        if not source_version:
+            raise CheckError("Dockerfile did not set QWENPAW_SOURCE_VERSION")
 
-            tag = f"v{pinned_version}"
-            tag_commit = git_remote_tag_commit(args.qwenpaw_remote, tag)
-            check_equal("QWENPAW_UPSTREAM_REF matches upstream package tag", pins.get("QWENPAW_UPSTREAM_REF", ""), tag_commit, checks)
+        resolved_ref, resolved_version = fetch_source_ref(source_repo or args.qwenpaw_remote, source_ref)
+        check_equal("QWENPAW_SOURCE_REF resolves to pinned commit", resolved_ref, source_ref, checks)
+        check_equal("QWENPAW_SOURCE_VERSION matches upstream source", resolved_version, source_version, checks)
 
         try:
-            upstream_main = git_remote_ref(args.qwenpaw_remote, "refs/heads/main")
+            upstream_main = git_remote_ref(source_repo or args.qwenpaw_remote, "refs/heads/main")
             notes.append(f"upstream main: {upstream_main}")
+            if upstream_main != source_ref:
+                notes.append("pinned source ref intentionally differs from current upstream main")
         except CheckError as exc:
             notes.append(f"upstream main check skipped: {exc}")
     except Exception as exc:  # noqa: BLE001 - compact CLI failure.
-        checks.append({"name": "pin check execution", "ok": False, "error": str(exc)})
+        checks.append({"name": "source pin check execution", "ok": False, "error": str(exc)})
 
     ok = all(check.get("ok") is True for check in checks)
     payload = {"ok": ok, "checks": checks, "notes": notes}
@@ -152,7 +127,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     else:
-        print(f"QwenPaw pin check: {'PASS' if ok else 'FAIL'}")
+        print(f"QwenPaw source pin check: {'PASS' if ok else 'FAIL'}")
         for check in checks:
             status = "PASS" if check.get("ok") is True else "FAIL"
             print(f"{status} {check.get('name')}")

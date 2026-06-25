@@ -2,19 +2,16 @@
 set -euo pipefail
 
 image="${IMAGE:-qwenpaw-all-in-one-hfs:dev}"
-qwenpaw_version="${QWENPAW_VERSION:-1.1.12.post2}"
+qwenpaw_source_repo="${QWENPAW_SOURCE_REPO:-https://github.com/agentscope-ai/QwenPaw.git}"
+qwenpaw_source_ref="${QWENPAW_SOURCE_REF:-25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0}"
+qwenpaw_source_version="${QWENPAW_SOURCE_VERSION:-2.0.0b1}"
 uv_version="${UV_VERSION:-0.7.20}"
-qwenpaw_sha="${QWENPAW_PACKAGE_SHA256:-c07ba7780d0752281138298a6e2a7b0efd372bffab60e68d1d7e9856a5b16e6a}"
-qwenpaw_upstream_ref="${QWENPAW_UPSTREAM_REF:-09fc515c88a5e817870e6b975e66b5be81893e03}"
 
 args=(
-  --build-arg "QWENPAW_VERSION=${qwenpaw_version}"
+  --build-arg "QWENPAW_SOURCE_REPO=${qwenpaw_source_repo}"
+  --build-arg "QWENPAW_SOURCE_REF=${qwenpaw_source_ref}"
+  --build-arg "QWENPAW_SOURCE_VERSION=${qwenpaw_source_version}"
   --build-arg "UV_VERSION=${uv_version}"
-  --build-arg "QWENPAW_UPSTREAM_REF=${qwenpaw_upstream_ref}"
 )
-
-if [ -n "$qwenpaw_sha" ]; then
-  args+=(--build-arg "QWENPAW_PACKAGE_SHA256=${qwenpaw_sha}")
-fi
 
 docker build -t "$image" "${args[@]}" .
