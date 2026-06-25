@@ -205,7 +205,7 @@ require_grep 'QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' Docke
 require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.0b1' Dockerfile "Dockerfile must default to the requested upstream source version"
 require_grep 'git fetch --depth 1 origin "\${QWENPAW_SOURCE_REF}"' Dockerfile "Dockerfile must fetch the pinned upstream source ref"
 require_grep 'src/qwenpaw/__version__\.py' Dockerfile "Dockerfile must validate the upstream source version"
-require_grep 'npm ci --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend dependencies"
+require_grep 'npm ci --include=dev --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend build dependencies"
 require_grep 'npm run build' Dockerfile "Dockerfile must build the console frontend from source"
 require_grep 'src/qwenpaw/console' Dockerfile "Dockerfile must copy console assets into the Python package source"
 require_grep '/tmp/qwenpaw-src' Dockerfile "Dockerfile must install QwenPaw from fetched source"

@@ -107,7 +107,7 @@ RUN python3 -m venv /home/user/.venv \
     && source_version="$(python -c "import runpy; print(runpy.run_path('src/qwenpaw/__version__.py')['__version__'])")" \
     && test "${source_version}" = "${QWENPAW_SOURCE_VERSION}" \
     && cd /tmp/qwenpaw-src/console \
-    && npm ci --no-audit --no-fund \
+    && NODE_ENV=development npm ci --include=dev --no-audit --no-fund \
     && npm run build \
     && cd /tmp/qwenpaw-src \
     && rm -rf src/qwenpaw/console/* \
