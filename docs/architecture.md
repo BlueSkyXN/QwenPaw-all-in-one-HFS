@@ -44,7 +44,7 @@ Docker build
   └─ copies docker/ runtime glue
 ```
 
-The current pinned source is QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0` with source version `2.0.0b1`.
+The current pinned source is QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b` with source version `2.0.0.post2`.
 
 ## Persistence Boundary
 
@@ -63,6 +63,8 @@ Transient runtime files use `/tmp/qwenpaw-run`.
 qwenpaw init --defaults --accept-security
 ```
 
+After initialization, `docker/prepare_runtime_config.py` atomically ensures the persisted config includes the local Nginx reverse proxy at `127.0.0.1/32`, while preserving user-managed proxy entries and never adding a broader network. Nginx overwrites `X-Forwarded-For` and `X-Real-IP` with its direct peer address. This lets latest QwenPaw resolve external requests without treating every Nginx request as loopback and bypassing authentication.
+
 Hugging Face rebuilds should not depend on `/data` during Docker build. `/data` only becomes meaningful at runtime.
 
 ## Ops/Admin Boundary
@@ -78,7 +80,8 @@ Nginx owns the public port and forwards:
 ```text
 /                  -> QwenPaw web app
 /nginx-health      -> direct Nginx response
-/healthz, /readyz  -> ops-service health/readiness
+/healthz           -> ops-service QwenPaw process liveness
+/readyz            -> ops-service probe of QwenPaw /api/healthz readiness
 /_ops/*            -> ops-service protected diagnostics
 /_admin/*          -> admin-service boundary
 ```

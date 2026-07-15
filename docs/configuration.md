@@ -17,14 +17,17 @@ Configuration is split into four surfaces:
 | `QWENPAW_SOURCE_VERSION` | Expected `qwenpaw.__version__` value in the pinned source tree | Required; change when the upstream source version changes |
 | `UV_VERSION` | uv installer version | Pin for release |
 
-Current default release pins:
+Current default source pins:
 
 ```text
+BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
-QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0
-QWENPAW_SOURCE_VERSION=2.0.0b1
+QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b
+QWENPAW_SOURCE_VERSION=2.0.0.post2
 UV_VERSION=0.7.20
 ```
+
+The source ref is an immutable snapshot of upstream `main`. Use `python3 scripts/check-qwenpaw-pins.py --require-upstream-main` when a release must track the current live `main` head; the package version alone cannot distinguish later commits that retain the same version string.
 
 ## Runtime Variables
 
@@ -59,6 +62,8 @@ QWENPAW_AUTH_ENABLED=true
 QWENPAW_TELEMETRY_OPT_OUT=1
 ADMIN_ENABLED=false
 ```
+
+The entrypoint manages the persisted QwenPaw JSON field `security.trusted_proxies` directly because it is not a runtime environment variable. It preserves existing proxy networks and adds `127.0.0.1/32` when needed; the automatic migration never adds a broader network.
 
 ## Secrets
 

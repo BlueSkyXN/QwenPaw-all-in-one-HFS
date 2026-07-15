@@ -40,8 +40,8 @@ or:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0 \
-  --build-arg QWENPAW_SOURCE_VERSION=2.0.0b1 \
+  --build-arg QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b \
+  --build-arg QWENPAW_SOURCE_VERSION=2.0.0.post2 \
   .
 ```
 
@@ -138,13 +138,18 @@ PASS smoke: nginx-health
 PASS smoke: healthz
 PASS smoke: readyz
 PASS smoke: web-root
+PASS smoke: qwenpaw-auth-boundary status=401
 PASS smoke: ops-health
+PASS smoke: ops-readyz
 PASS smoke: ops-status
 PASS smoke: ops-config
 PASS smoke: ops-persistence
+PASS smoke: ops-version
 PASS smoke: admin default boundary status=404
 PASS qwenpaw-hfs-smoke
 ```
+
+The QwenPaw auth-boundary assertion runs when authentication is enabled and a user already exists. On a fresh volume it reports a warning until first-account registration is complete.
 
 ## First-Run Browser Verification
 

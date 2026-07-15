@@ -18,6 +18,14 @@ Set `QWENPAW_AUTH_ENABLED=true` for exposed Spaces. On a fresh persistent volume
 - Do not place it in screenshots, PR descriptions, issue comments or public logs.
 - If the `Create Account` screen reappears unexpectedly, investigate `/data` persistence before creating another account.
 
+### Reverse Proxy Boundary
+
+Latest QwenPaw only trusts `X-Forwarded-For` and `X-Real-IP` when the direct peer is listed in `security.trusted_proxies`. This Space always places Nginx on `127.0.0.1` in front of QwenPaw, so `docker/prepare_runtime_config.py` atomically adds `127.0.0.1/32` to that persisted list after initialization and on upgrades.
+
+Nginx replaces inbound forwarding headers with `$remote_addr`; it does not append a client-supplied chain. Do not broaden the trusted proxy list to `0.0.0.0/0`, `::/0`, unknown Hugging Face ranges or other networks that have not been independently verified.
+
+When `QWENPAW_AUTH_ENABLED=true` and an account exists, `scripts/hf-space-smoke.sh` verifies that an unauthenticated external request to a protected QwenPaw API returns `401`.
+
 ## Ops Surface
 
 `/healthz` and `/readyz` are public aliases for platform health checks. Direct `/_ops/*` endpoints require `OPS_TOKEN`.

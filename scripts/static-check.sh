@@ -22,10 +22,14 @@ bash -n scripts/hf-space-smoke.sh
 bash -n scripts/local-build.sh
 bash -n scripts/local-run.sh
 
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_runtime_helpers.py'
+
 PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
+  docker/prepare_runtime_config.py \
   docker/ops_service.py \
   docker/admin_service.py \
-  scripts/check-qwenpaw-pins.py
+  scripts/check-qwenpaw-pins.py \
+  scripts/test_runtime_helpers.py
 rm -rf docker/__pycache__
 rm -rf scripts/__pycache__
 

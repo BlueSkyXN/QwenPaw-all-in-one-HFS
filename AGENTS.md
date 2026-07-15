@@ -74,9 +74,9 @@ additional commands without checking real files first.
 
 | Command | Purpose | Scope | Sandbox notes |
 |---|---|---|---|
-| `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, Python compile checks, and removes generated `__pycache__` folders. | repo | No Docker or network required. Requires `bash` and `python3`. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
+| `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, runtime-helper unit tests, Python compile checks, and removes generated `__pycache__` folders. | repo | No Docker or network required. Requires `bash` and `python3`. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
 | `bash scripts/validate-hfs-contract.sh` | Validate Pattern A repo shape, `hfs-dev.toml`, Space metadata, release pins, routing/security invariants, ignored secret patterns, and smoke coverage. | repo | No Docker or network required. Requires `python3` with `tomllib`, plus standard shell tools. |
-| `python3 scripts/check-qwenpaw-pins.py` | Networked release check that fetches Dockerfile `QWENPAW_SOURCE_REF` from upstream QwenPaw and verifies the expected source version. | release pins | Requires network, `git`, and access to GitHub. Not part of the default static gate. |
+| `python3 scripts/check-qwenpaw-pins.py` | Networked release check that fetches Dockerfile `QWENPAW_SOURCE_REF` from upstream QwenPaw and verifies the expected source version. Add `--require-upstream-main` for latest-main releases. | release pins | Requires network, `git`, and access to GitHub. Not part of the default static gate. |
 | `git diff --check` | Whitespace/error check before publishing changes. | repo | Read-only Git check. |
 | `bash -n docker/entrypoint.sh` | Targeted shell syntax check for runtime entrypoint edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
 | `bash -n docker/healthcheck.sh` | Targeted shell syntax check for container healthcheck edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
@@ -84,7 +84,7 @@ additional commands without checking real files first.
 | `bash -n scripts/hf-space-smoke.sh` | Targeted shell syntax check for smoke edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not run network calls. |
 | `bash -n scripts/local-build.sh` | Targeted shell syntax check for local Docker build helper edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not build. |
 | `bash -n scripts/local-run.sh` | Targeted shell syntax check for local Docker run helper edits. | `scripts/` | Covered by `scripts/static-check.sh`; does not run Docker. |
-| `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/ops_service.py docker/admin_service.py scripts/check-qwenpaw-pins.py` | Targeted Python syntax check for ops/admin and release pin checker edits. | `docker/`, `scripts/` | Covered by `scripts/static-check.sh`. Remove any generated `__pycache__` if run without `PYTHONDONTWRITEBYTECODE=1`. |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/prepare_runtime_config.py docker/ops_service.py docker/admin_service.py scripts/check-qwenpaw-pins.py scripts/test_runtime_helpers.py` | Targeted Python syntax check for runtime config, ops/admin, tests, and release pin checker edits. | `docker/`, `scripts/` | Covered by `scripts/static-check.sh`. Remove any generated `__pycache__` if run without `PYTHONDONTWRITEBYTECODE=1`. |
 | `bash scripts/local-build.sh` | Build local Docker image `qwenpaw-all-in-one-hfs:dev` by default. | repo | Requires Docker daemon and network/package downloads during image build. Not a default sandbox check. |
 | `OPS_TOKEN=dev-ops-token bash scripts/local-run.sh` | Run the local Docker container on port `7860`. | repo | Requires Docker daemon, local image, interactive container runtime, and port availability. |
 | `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` or `QWENPAW_OPS_TOKEN` is set. |
@@ -168,7 +168,7 @@ For `docker/` runtime changes, also consider the targeted syntax checks while it
 bash -n docker/entrypoint.sh
 bash -n docker/healthcheck.sh
 bash -n scripts/admin-smoke.sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/ops_service.py docker/admin_service.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/prepare_runtime_config.py docker/ops_service.py docker/admin_service.py
 ```
 
 For `scripts/` changes, also consider:

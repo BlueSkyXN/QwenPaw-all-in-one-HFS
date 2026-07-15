@@ -45,7 +45,7 @@ QWENPAW_SOURCE_VERSION         expected qwenpaw.__version__
 UV_VERSION                     uv installer version
 ```
 
-The default build pins upstream QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0` and expects source version `2.0.0b1`. If the source commit changes, update the expected source version when needed.
+The default build pins upstream QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b` and expects source version `2.0.0.post2`. If the source commit changes, update the expected source version when needed and use the networked pin checker to verify whether the release must equal current upstream `main`.
 
 ## Shared Runtime Contract
 
@@ -58,6 +58,8 @@ Current implementation covers:
 | Manifest | root-level `hfs-dev.toml` |
 | Single public port | `README.md`, `Dockerfile EXPOSE`, and Nginx all use `7860` |
 | Multi-service routing | Nginx routes QwenPaw, ops and admin under one public port |
+| Reverse-proxy auth | persisted `trusted_proxies` includes only local Nginx; forwarding headers are sanitized |
+| Readiness | `/readyz` follows upstream QwenPaw `/api/healthz`, not TCP alone |
 | Runtime glue | `docker/` |
 | Persistence | `/data/qwenpaw/*` |
 | Ops | `/_ops` is read-only |

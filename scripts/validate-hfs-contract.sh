@@ -66,6 +66,7 @@ require_path docker
 require_file docker/nginx.conf
 require_file docker/entrypoint.sh
 require_file docker/supervisord.conf
+require_file docker/prepare_runtime_config.py
 require_file docker/ops_service.py
 require_file docker/admin_service.py
 require_file docker/healthcheck.sh
@@ -200,9 +201,10 @@ require_grep '^ARG QWENPAW_SOURCE_REF=' Dockerfile "Dockerfile must expose QWENP
 require_grep '^ARG QWENPAW_SOURCE_VERSION=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_VERSION build input"
 require_grep '^ARG UV_VERSION=' Dockerfile "Dockerfile must expose UV_VERSION build input"
 require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile "Dockerfile must select base runtime image from BASE_IMAGE_REF"
+require_grep '^ARG BASE_IMAGE_REF=node:22-slim@sha256:[0-9a-f]{64}$' Dockerfile "Dockerfile release default must pin the base image by digest"
 require_grep 'QWENPAW_SOURCE_REPO=https://github\.com/agentscope-ai/QwenPaw\.git' Dockerfile "Dockerfile must default to the upstream QwenPaw source repository"
-require_grep 'QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' Dockerfile "Dockerfile must default to the requested upstream source commit"
-require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.0b1' Dockerfile "Dockerfile must default to the requested upstream source version"
+require_grep 'QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b' Dockerfile "Dockerfile must default to the requested upstream source commit"
+require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.0\.post2' Dockerfile "Dockerfile must default to the requested upstream source version"
 require_grep 'git fetch --depth 1 origin "\${QWENPAW_SOURCE_REF}"' Dockerfile "Dockerfile must fetch the pinned upstream source ref"
 require_grep 'src/qwenpaw/__version__\.py' Dockerfile "Dockerfile must validate the upstream source version"
 require_grep 'npm ci --include=dev --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend build dependencies"
@@ -213,6 +215,7 @@ require_absent 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must not in
 require_absent '^ARG QWENPAW_PACKAGE_SHA256=' Dockerfile "Dockerfile must not expose PyPI artifact checksum in source-fetch mode"
 require_grep 'fetch_source_ref' scripts/check-qwenpaw-pins.py "pin checker must fetch and validate the upstream source ref"
 require_grep 'QWENPAW_SOURCE_VERSION matches upstream source' scripts/check-qwenpaw-pins.py "pin checker must validate upstream source version"
+require_grep 'require-upstream-main' scripts/check-qwenpaw-pins.py "pin checker must support enforcing current upstream main"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"
 require_absent '^FROM \${DIFY_' Dockerfile "QwenPaw HFS must not select Dify images"
@@ -225,7 +228,10 @@ require_grep '^\*\.pem$' .dockerignore ".dockerignore must exclude *.pem"
 
 require_grep '/nginx-health' scripts/hf-space-smoke.sh "smoke script must check /nginx-health"
 require_grep '/healthz' scripts/hf-space-smoke.sh "smoke script must check /healthz"
+require_grep '/readyz' docker/healthcheck.sh "container healthcheck must wait for QwenPaw readiness"
 require_grep '/_ops/health' scripts/hf-space-smoke.sh "smoke script must check /_ops/health"
+require_grep 'ops-readyz' scripts/hf-space-smoke.sh "smoke script must check protected readiness"
+require_grep 'qwenpaw-auth-boundary' scripts/hf-space-smoke.sh "smoke script must verify the QwenPaw auth boundary when configured"
 require_grep '/_ops/persistence' scripts/hf-space-smoke.sh "smoke script must check /_ops/persistence when OPS_TOKEN is set"
 require_grep '/_admin/api/status' scripts/admin-smoke.sh "admin smoke script must check /_admin/api/status"
 require_grep 'ADMIN_EXPECTED_ENABLED' scripts/admin-smoke.sh "admin smoke script must keep disabled-by-default mode explicit"
@@ -238,7 +244,17 @@ require_grep 'client_max_body_size 64k;' docker/nginx.conf "Nginx admin route mu
 require_grep 'fastcgi_temp_path[[:space:]]+/tmp/qwenpaw-run/nginx-fastcgi;' docker/nginx.conf "Nginx must use writable fastcgi temp path"
 require_grep 'uwsgi_temp_path[[:space:]]+/tmp/qwenpaw-run/nginx-uwsgi;' docker/nginx.conf "Nginx must use writable uwsgi temp path"
 require_grep 'scgi_temp_path[[:space:]]+/tmp/qwenpaw-run/nginx-scgi;' docker/nginx.conf "Nginx must use writable scgi temp path"
+require_absent '\$proxy_add_x_forwarded_for' docker/nginx.conf "Nginx must not forward a client-supplied X-Forwarded-For chain"
+require_grep 'X-Forwarded-For[[:space:]]+\$remote_addr;' docker/nginx.conf "Nginx must replace X-Forwarded-For with its direct peer address"
 require_grep 'nginx -t -c /home/user/app/docker/nginx.conf' docker/entrypoint.sh "entrypoint must validate Nginx config before supervisor"
+require_grep 'prepare_runtime_config\.py' docker/entrypoint.sh "entrypoint must migrate trusted proxy configuration"
+require_grep 'trusted_proxies' docker/prepare_runtime_config.py "runtime config migration must manage trusted proxies"
+require_grep '127\.0\.0\.1/32' docker/prepare_runtime_config.py "runtime config migration must trust only the local Nginx proxy by default"
+require_grep '/api/healthz' docker/ops_service.py "ops readiness must use the upstream QwenPaw readiness endpoint"
+require_grep 'path == "/readyz"' docker/ops_service.py "public readyz must require upstream readiness"
+require_grep 'autorestart=unexpected' docker/supervisord.conf "QwenPaw supervisor policy must not restart clean exits"
+require_grep 'startretries=5' docker/supervisord.conf "QwenPaw supervisor policy must bound startup retries"
+require_grep 'startsecs=10' docker/supervisord.conf "QwenPaw supervisor policy must require a stable startup window"
 require_grep 'Content-Security-Policy' docker/ops_service.py "ops service must emit a CSP header"
 require_grep 'Content-Security-Policy' docker/admin_service.py "admin service must emit a CSP header"
 require_grep 'hmac.compare_digest' docker/ops_service.py "ops service must compare tokens with hmac.compare_digest"

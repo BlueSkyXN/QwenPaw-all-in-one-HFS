@@ -2,13 +2,13 @@
 
 Maintainer automation for validation, local Docker build/run, and Space smoke checks. Read
 this card before changing any script or moving validation logic.
-Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`,
+Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`, `test_runtime_helpers.py`,
 `hf-space-smoke.sh`, `admin-smoke.sh`, `local-build.sh`, `local-run.sh`.
 
 ## Local invariants
 
 - `static-check.sh` is the default no-Docker gate and must remain runnable with `bash` and
-  `python3` only.
+  `python3` only. It includes standard-library runtime-helper unit tests.
 - `validate-hfs-contract.sh` is the repository-local HFS contract authority. It should fail
   on Pattern A drift, port drift, missing required files, release pin drift, routing drift,
   and ops/admin boundary regressions.
