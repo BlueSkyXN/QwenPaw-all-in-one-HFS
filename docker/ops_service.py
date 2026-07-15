@@ -10,6 +10,7 @@ import shutil
 import socket
 import subprocess
 import time
+from http.client import HTTPConnection, HTTPException
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -215,6 +216,67 @@ def tcp_check(host: str, port: int, timeout: float = 1.5) -> bool:
         return False
 
 
+def qwenpaw_readiness(
+    host: str,
+    port: int,
+    timeout: float = 3.0,
+) -> tuple[bool, dict[str, Any]]:
+    connection: HTTPConnection | None = None
+    try:
+        connection = HTTPConnection(host, port, timeout=timeout)
+        connection.request("GET", "/api/healthz")
+        response = connection.getresponse()
+        raw = response.read(8192)
+        detail: dict[str, Any] = {"http_status": response.status}
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict):
+            for key in ("status", "detail", "uptime_seconds"):
+                value = payload.get(key)
+                if isinstance(value, (str, int, float)):
+                    detail[key] = value
+        return response.status == 200, detail
+    except (OSError, HTTPException) as exc:
+        return False, {"error": type(exc).__name__}
+    finally:
+        if connection is not None:
+            connection.close()
+
+
+def health_info(*, require_ready: bool) -> dict[str, Any]:
+    qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
+    qwenpaw_up = tcp_check("127.0.0.1", qwenpaw_port)
+    config_exists = Path(
+        os.environ.get("QWENPAW_WORKING_DIR", "/data/qwenpaw/working"),
+        "config.json",
+    ).exists()
+    data_writable = os.access("/data", os.W_OK)
+    qwenpaw_ready = False
+    readiness: dict[str, Any] = {"checked": False}
+    if require_ready and qwenpaw_up:
+        qwenpaw_ready, readiness = qwenpaw_readiness("127.0.0.1", qwenpaw_port)
+
+    ok = qwenpaw_up
+    if require_ready:
+        ok = qwenpaw_up and qwenpaw_ready and config_exists and data_writable
+
+    return {
+        "ok": ok,
+        "mode": "readiness" if require_ready else "liveness",
+        "checks": {
+            "qwenpaw_tcp": qwenpaw_up,
+            "qwenpaw_api_ready": qwenpaw_ready if require_ready else None,
+            "ops_tcp": True,
+            "data_writable": data_writable,
+            "config_exists": config_exists,
+        },
+        "qwenpaw_readiness": readiness,
+        "uptime_seconds": round(time.time() - STARTED_AT, 3),
+    }
+
+
 def fixed_supervisor_status() -> list[dict[str, str]]:
     try:
         proc = subprocess.run(
@@ -385,36 +447,14 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path in {"/healthz", "/readyz"}:
-            qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
-            qwenpaw_up = tcp_check("127.0.0.1", qwenpaw_port)
-            body = {
-                "ok": qwenpaw_up,
-                "checks": {
-                    "qwenpaw_tcp": qwenpaw_up,
-                    "ops_tcp": True,
-                    "data_writable": os.access("/data", os.W_OK),
-                    "config_exists": Path(os.environ.get("QWENPAW_WORKING_DIR", "/data/qwenpaw/working"), "config.json").exists(),
-                },
-                "uptime_seconds": round(time.time() - STARTED_AT, 3),
-            }
+            body = health_info(require_ready=path == "/readyz")
             json_response(self, 200 if body["ok"] else 503, body)
             return
 
         if path in {"/_ops/health", "/_ops/healthz", "/_ops/readyz"}:
             if not require_auth(self):
                 return
-            qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
-            qwenpaw_up = tcp_check("127.0.0.1", qwenpaw_port)
-            body = {
-                "ok": qwenpaw_up,
-                "checks": {
-                    "qwenpaw_tcp": qwenpaw_up,
-                    "ops_tcp": True,
-                    "data_writable": os.access("/data", os.W_OK),
-                    "config_exists": Path(os.environ.get("QWENPAW_WORKING_DIR", "/data/qwenpaw/working"), "config.json").exists(),
-                },
-                "uptime_seconds": round(time.time() - STARTED_AT, 3),
-            }
+            body = health_info(require_ready=path == "/_ops/readyz")
             json_response(self, 200 if body["ok"] else 503, body)
             return
 
@@ -472,7 +512,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/_ops/metrics":
             if not require_auth(self):
                 return
-            qwenpaw_up = 1 if tcp_check("127.0.0.1", int(os.environ.get("QWENPAW_PORT", "8088"))) else 0
+            qwenpaw_port = int(os.environ.get("QWENPAW_PORT", "8088"))
+            qwenpaw_up = 1 if tcp_check("127.0.0.1", qwenpaw_port) else 0
+            qwenpaw_ready, _ = qwenpaw_readiness("127.0.0.1", qwenpaw_port)
             metrics = [
                 "# HELP qwenpaw_hfs_uptime_seconds Ops service uptime.",
                 "# TYPE qwenpaw_hfs_uptime_seconds gauge",
@@ -480,6 +522,9 @@ class Handler(BaseHTTPRequestHandler):
                 "# HELP qwenpaw_hfs_qwenpaw_tcp_up Internal QwenPaw TCP status.",
                 "# TYPE qwenpaw_hfs_qwenpaw_tcp_up gauge",
                 f"qwenpaw_hfs_qwenpaw_tcp_up {qwenpaw_up}",
+                "# HELP qwenpaw_hfs_qwenpaw_ready Upstream QwenPaw startup readiness.",
+                "# TYPE qwenpaw_hfs_qwenpaw_ready gauge",
+                f"qwenpaw_hfs_qwenpaw_ready {1 if qwenpaw_ready else 0}",
             ]
             text_response(self, 200, "\n".join(metrics) + "\n")
             return

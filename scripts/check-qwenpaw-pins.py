@@ -88,6 +88,11 @@ def main() -> int:
     )
     parser.add_argument("--repo-root", default=Path(__file__).resolve().parents[1], type=Path)
     parser.add_argument("--qwenpaw-remote", default=DEFAULT_QWENPAW_REMOTE)
+    parser.add_argument(
+        "--require-upstream-main",
+        action="store_true",
+        help="Fail when QWENPAW_SOURCE_REF is not the current upstream main commit.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable output")
     args = parser.parse_args()
 
@@ -114,9 +119,18 @@ def main() -> int:
         try:
             upstream_main = git_remote_ref(source_repo or args.qwenpaw_remote, "refs/heads/main")
             notes.append(f"upstream main: {upstream_main}")
-            if upstream_main != source_ref:
+            if args.require_upstream_main:
+                check_equal(
+                    "QWENPAW_SOURCE_REF matches current upstream main",
+                    source_ref,
+                    upstream_main,
+                    checks,
+                )
+            elif upstream_main != source_ref:
                 notes.append("pinned source ref intentionally differs from current upstream main")
         except CheckError as exc:
+            if args.require_upstream_main:
+                raise
             notes.append(f"upstream main check skipped: {exc}")
     except Exception as exc:  # noqa: BLE001 - compact CLI failure.
         checks.append({"name": "source pin check execution", "ok": False, "error": str(exc)})

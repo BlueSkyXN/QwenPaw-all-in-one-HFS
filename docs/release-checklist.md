@@ -13,7 +13,7 @@ git diff --check
 For release pin changes, also run the networked check:
 
 ```bash
-python3 scripts/check-qwenpaw-pins.py
+python3 scripts/check-qwenpaw-pins.py --require-upstream-main
 ```
 
 ## Release Pins
@@ -21,10 +21,10 @@ python3 scripts/check-qwenpaw-pins.py
 Record:
 
 ```text
-BASE_IMAGE_REF=node:22-slim@sha256:<digest>
+BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
-QWENPAW_SOURCE_REF=25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0
-QWENPAW_SOURCE_VERSION=2.0.0b1
+QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b
+QWENPAW_SOURCE_VERSION=2.0.0.post2
 UV_VERSION=0.7.20
 ```
 
@@ -32,9 +32,9 @@ UV_VERSION=0.7.20
 
 ```bash
 docker build \
-  --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-  --build-arg QWENPAW_SOURCE_REF='25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' \
-  --build-arg QWENPAW_SOURCE_VERSION='2.0.0b1' \
+  --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
+  --build-arg QWENPAW_SOURCE_REF='6815e51d7199939bb199735f6b99fe02d2fa1b2b' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post2' \
   --build-arg UV_VERSION='0.7.20' \
   -t qwenpaw-all-in-one-hfs:release .
 ```
@@ -67,6 +67,8 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
 - Confirm runtime takeover completed.
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
+- Confirm `/readyz` reports upstream QwenPaw startup readiness, not only an open TCP port.
+- When auth is enabled and a user exists, confirm an unauthenticated protected `/api/*` request returns `401`.
 - Confirm admin is disabled unless intentionally enabled.
 
 ## GitHub/Hugging Face Closeout

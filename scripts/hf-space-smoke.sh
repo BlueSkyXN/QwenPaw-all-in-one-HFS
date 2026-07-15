@@ -20,11 +20,34 @@ check healthz "$base/healthz"
 check readyz "$base/readyz"
 check web-root "$base/"
 
+auth_status_json=$(curl -fsS --max-time 20 "$base/api/auth/status")
+read -r auth_enabled auth_has_users < <(
+  printf '%s' "$auth_status_json" | python3 -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+print(str(bool(payload.get("enabled"))).lower(), str(bool(payload.get("has_users"))).lower())
+'
+)
+if [ "$auth_enabled" = "true" ] && [ "$auth_has_users" = "true" ]; then
+  qwenpaw_auth_status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 20 "$base/api/agents" || true)
+  if [ "$qwenpaw_auth_status" != "401" ]; then
+    printf 'FAIL smoke: expected protected QwenPaw API status=401 without token, got %s\n' "$qwenpaw_auth_status" >&2
+    exit 1
+  fi
+  printf 'PASS smoke: qwenpaw-auth-boundary status=%s\n' "$qwenpaw_auth_status"
+else
+  printf 'WARN smoke: QwenPaw auth boundary check skipped; enabled=%s has_users=%s\n' "$auth_enabled" "$auth_has_users" >&2
+fi
+
 if [ -n "$ops_token" ]; then
   check ops-health "$base/_ops/health" -H "X-Ops-Token: $ops_token"
+  check ops-readyz "$base/_ops/readyz" -H "X-Ops-Token: $ops_token"
   check ops-status "$base/_ops/status" -H "X-Ops-Token: $ops_token"
   check ops-config "$base/_ops/config" -H "X-Ops-Token: $ops_token"
   check ops-persistence "$base/_ops/persistence" -H "X-Ops-Token: $ops_token"
+  check ops-version "$base/_ops/version" -H "X-Ops-Token: $ops_token"
 else
   printf 'WARN smoke: OPS_TOKEN not set; protected /_ops checks skipped\n' >&2
 fi

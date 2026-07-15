@@ -3,12 +3,14 @@
 Runtime glue copied into the Hugging Face Docker Space image. Read this card before
 editing entrypoint behavior, Nginx routing, Supervisor layout, health checks, or the
 Python `/_ops` and `/_admin` services.
-Key files: `entrypoint.sh`, `nginx.conf`, `supervisord.conf`, `ops_service.py`,
+Key files: `entrypoint.sh`, `prepare_runtime_config.py`, `nginx.conf`, `supervisord.conf`, `ops_service.py`,
 `admin_service.py`, `healthcheck.sh`, `qwenpaw.env.runtime`.
 
 ## Local invariants
 
 - Public Nginx port: `7860`; internal QwenPaw: `127.0.0.1:8088`.
+- `/healthz` is process liveness; `/readyz` must follow upstream QwenPaw `/api/healthz` readiness.
+- Persisted QwenPaw config must trust only the local Nginx peer by default, and Nginx must not forward a client-supplied IP chain.
 - ops-service: `127.0.0.1:8081`; admin-service: `127.0.0.1:8082`.
 - Runtime state stays under `/data/qwenpaw/*`; logs under `/data/var/logs`; transient
   files under `/tmp/qwenpaw-run`.

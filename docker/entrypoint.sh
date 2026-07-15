@@ -46,6 +46,8 @@ else
   echo "QwenPaw config found in ${QWENPAW_WORKING_DIR}; skipping init"
 fi
 
+python /home/user/app/docker/prepare_runtime_config.py "${QWENPAW_WORKING_DIR}/config.json"
+
 if [ -z "${QWENPAW_AUTH_ENABLED:-${COPAW_AUTH_ENABLED:-}}" ]; then
   cat >&2 <<'EOF'
 ============================================================

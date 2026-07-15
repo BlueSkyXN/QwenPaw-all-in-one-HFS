@@ -64,8 +64,8 @@ Only one public port is exposed:
 Nginx :7860
   ├─ /                  -> QwenPaw app :8088
   ├─ /nginx-health      -> Nginx liveness
-  ├─ /healthz           -> ops-service comprehensive health
-  ├─ /readyz            -> ops-service readiness
+  ├─ /healthz           -> QwenPaw process liveness
+  ├─ /readyz            -> upstream /api/healthz readiness
   ├─ /_ops/*            -> ops-service :8081
   └─ /_admin/*          -> admin-service :8082, disabled by default
 
@@ -90,6 +90,7 @@ Enable Hugging Face **Persistent Storage** before treating runtime data as durab
 ```
 
 The container initializes QwenPaw with `qwenpaw init --defaults --accept-security` if `/data/qwenpaw/working/config.json` does not exist.
+On every start, the HFS entrypoint ensures `security.trusted_proxies` includes the local Nginx peer (`127.0.0.1/32`) without adding a broader network. Nginx replaces inbound forwarding headers with its direct peer address so an external request is not mistaken for loopback traffic by QwenPaw authentication.
 
 ## Recommended Hugging Face Settings
 
@@ -165,14 +166,14 @@ Release-style build:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:release \
-  --build-arg BASE_IMAGE_REF='node:22-slim@sha256:<digest>' \
-  --build-arg QWENPAW_SOURCE_REF='25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0' \
-  --build-arg QWENPAW_SOURCE_VERSION='2.0.0b1' \
+  --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
+  --build-arg QWENPAW_SOURCE_REF='6815e51d7199939bb199735f6b99fe02d2fa1b2b' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post2' \
   --build-arg UV_VERSION='0.7.20' \
   .
 ```
 
-The default build fetches upstream QwenPaw commit `25015cb5e36fc7a4067d19c6d11ced2c1fe1f4e0`, validates that `src/qwenpaw/__version__.py` reports `2.0.0b1`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree.
+The default build fetches immutable upstream QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b`, validates that `src/qwenpaw/__version__.py` reports `2.0.0.post2`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree. Release validation can require this pin to equal the live upstream `main` head with `python3 scripts/check-qwenpaw-pins.py --require-upstream-main`.
 
 ## Local Run
 
@@ -203,9 +204,9 @@ OPS_TOKEN=dev-ops-token \
 Public liveness:
 
 ```text
-/nginx-health
-/healthz
-/readyz
+/nginx-health   Nginx process liveness
+/healthz        QwenPaw TCP/process liveness
+/readyz         QwenPaw background-startup readiness via /api/healthz
 ```
 
 Protected read-only diagnostics:
