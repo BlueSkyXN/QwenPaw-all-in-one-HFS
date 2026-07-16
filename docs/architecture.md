@@ -57,6 +57,11 @@ The current pinned source is QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2f
 
 Transient runtime files use `/tmp/qwenpaw-run`.
 
+On Hugging Face Spaces, `/data` is durable only when a Storage Bucket is attached as a
+read-write volume at that exact path. The volume attachment is Space configuration,
+not part of the Git repository. A writable `/data` directory without an attached
+volume is still ephemeral.
+
 `/data/qwenpaw/working/config.json` is the first-run boundary. If it is missing, `docker/entrypoint.sh` runs:
 
 ```text
@@ -65,7 +70,8 @@ qwenpaw init --defaults --accept-security
 
 After initialization, `docker/prepare_runtime_config.py` atomically ensures the persisted config includes the local Nginx reverse proxy at `127.0.0.1/32`, while preserving user-managed proxy entries and never adding a broader network. Nginx overwrites `X-Forwarded-For` and `X-Real-IP` with its direct peer address. This lets latest QwenPaw resolve external requests without treating every Nginx request as loopback and bypassing authentication.
 
-Hugging Face rebuilds should not depend on `/data` during Docker build. `/data` only becomes meaningful at runtime.
+Hugging Face rebuilds should not depend on `/data` during Docker build. `/data` only
+becomes meaningful at runtime after the configured Storage Bucket volume is mounted.
 
 ## Ops/Admin Boundary
 

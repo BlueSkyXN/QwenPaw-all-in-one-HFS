@@ -5,7 +5,8 @@ This repository is deployed as a repo-root Hugging Face Docker Space. GitHub and
 ## Prerequisites
 
 - Hugging Face Space SDK: Docker.
-- Hugging Face Persistent Storage enabled before relying on `/data`.
+- A private Hugging Face Storage Bucket attached read-write at `/data` before relying
+  on runtime state.
 - `OPS_TOKEN` configured in Space Settings for protected diagnostics.
 - QwenPaw authentication enabled for exposed deployments.
 
@@ -63,11 +64,43 @@ http://127.0.0.1:7860/
 OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860
 ```
 
+## Hugging Face Storage Bucket
+
+Current Hugging Face guidance uses Storage Bucket volumes for durable Space data. The
+legacy `small`/`medium`/`large` Space storage API is deprecated in current
+`huggingface_hub`; do not use it for a new deployment.
+
+Create a private bucket within the account's existing storage allowance:
+
+```bash
+hf buckets create <namespace>/<bucket-name> --private --exist-ok
+```
+
+Attach it read-write at `/data`:
+
+```bash
+hf spaces volumes set <namespace>/<space-name> \
+  -v hf://buckets/<namespace>/<bucket-name>:/data
+hf spaces wait <namespace>/<space-name> --timeout 15m
+hf spaces volumes list <namespace>/<space-name> --json
+```
+
+The expected volume has `type=bucket`, `mount_path=/data` and `read_only=false`.
+`hf spaces volumes set` replaces the complete volume list, so include every existing
+mount in the command instead of accidentally dropping unrelated volumes.
+
+Record the bucket ID only in local `.env.local` or another private deployment ledger:
+
+```env
+HF_STORAGE_BUCKET=<namespace>/<bucket-name>
+```
+
 ## Hugging Face Space
 
 1. Create a Docker Space.
 2. Push this repository root to the Space repository.
-3. Enable Persistent Storage if runtime data must survive restarts/rebuilds.
+3. Attach a private Storage Bucket read-write at `/data` if runtime data must survive
+   restarts/rebuilds.
 4. Set Variables/Secrets from `docs/configuration.md`.
 5. Wait for build and runtime takeover.
 6. Run smoke against the live Space URL.
@@ -153,7 +186,8 @@ The QwenPaw auth-boundary assertion runs when authentication is enabled and a us
 
 ## First-Run Browser Verification
 
-On a fresh persistent volume, QwenPaw shows `Create Account`. Use the browser to create the first admin account only with credentials stored in local `.env.local`:
+On a fresh attached `/data` volume, QwenPaw shows `Create Account`. Use the browser to
+create the first admin account only with credentials stored in local `.env.local`:
 
 ```env
 QWENPAW_ADMIN_USERNAME=<local-test-admin-name>

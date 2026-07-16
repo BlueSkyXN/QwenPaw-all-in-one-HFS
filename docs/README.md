@@ -10,7 +10,7 @@ Runtime mode: source-fetch
 Space root: repository root
 Public port: 7860
 Primary runtime: QwenPaw behind Nginx and Supervisor
-Persistence boundary: /data/qwenpaw/*
+Persistence boundary: /data/qwenpaw/* via a Storage Bucket mounted at /data
 ```
 
 The upstream product source is not vendored here. The Docker build fetches the pinned upstream source commit and this repository owns the HFS runtime glue, docs, smoke checks and release pins.
@@ -43,7 +43,9 @@ set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
-Closeout is not just a successful `git push`. Confirm `HEAD`, `origin/main`, `hf/main`, Hugging Face repo `sha`, Hugging Face `runtime.raw.sha`, and endpoint smoke all agree.
+Closeout is not just a successful `git push`. Confirm `HEAD`, `origin/main`, `hf/main`,
+Hugging Face repo `sha`, Hugging Face `runtime.raw.sha`, the `/data` Storage Bucket
+volume, and endpoint smoke all agree.
 
 ## What Belongs In Docs
 
