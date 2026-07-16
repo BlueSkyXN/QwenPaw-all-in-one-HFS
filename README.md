@@ -19,7 +19,7 @@ It is not the upstream QwenPaw product source. It maintains the Hugging Face Spa
 - rootless Docker runtime
 - Nginx single public port
 - Supervisor process layout
-- `/data` persistence boundary
+- `/data` runtime-state boundary backed by an attached Hugging Face Storage Bucket
 - read-only `/_ops` diagnostics
 - disabled-by-default `/_admin` management surface
 - smoke/static checks and HFS alignment documentation
@@ -79,7 +79,19 @@ Internal processes:
 
 ## Persistence Layout
 
-Enable Hugging Face **Persistent Storage** before treating runtime data as durable.
+Attach a private Hugging Face **Storage Bucket** read-write at `/data` before treating
+runtime data as durable. Without that volume, `/data` belongs to the ephemeral Space
+container and is lost on restart, rebuild or stop.
+
+```bash
+hf buckets create <namespace>/<bucket-name> --private --exist-ok
+hf spaces volumes set <namespace>/<space-name> \
+  -v hf://buckets/<namespace>/<bucket-name>:/data
+hf spaces volumes list <namespace>/<space-name> --json
+```
+
+`hf spaces volumes set` replaces the complete volume list. When a Space already has
+other mounts, repeat every required `-v` argument in the same command.
 
 ```text
 /data/qwenpaw/working      QwenPaw config, memory, skills and runtime state
@@ -138,6 +150,7 @@ At minimum, set:
 ```env
 GH_REPO=BlueSkyXN/QwenPaw-all-in-one-HFS
 HF_SPACE_ID=BlueSkyXN/QwenPaw-all-in-one-HFS
+HF_STORAGE_BUCKET=<namespace>/<bucket-name>
 SMOKE_BASE_URL=https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space
 OPS_TOKEN=<same value configured in Hugging Face Space Settings>
 ```

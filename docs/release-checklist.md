@@ -65,11 +65,28 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
 
 - Confirm Space build succeeded.
 - Confirm runtime takeover completed.
+- Confirm `hf spaces volumes list <space-id> --json` reports a read-write Storage Bucket
+  mounted at `/data`.
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
 - Confirm `/readyz` reports upstream QwenPaw startup readiness, not only an open TCP port.
 - When auth is enabled and a user exists, confirm an unauthenticated protected `/api/*` request returns `401`.
 - Confirm admin is disabled unless intentionally enabled.
+
+For a live persistence drill, record the bucket-side config object, restart the Space,
+and compare it after takeover:
+
+```bash
+hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
+hf spaces restart "$HF_SPACE_ID"
+hf spaces wait "$HF_SPACE_ID" --timeout 15m
+hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
+bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
+```
+
+Repeat the readback after a release rebuild. A stable config object plus
+`has_users=true` after restart/rebuild is stronger persistence evidence than a merely
+writable `/data` directory.
 
 ## GitHub/Hugging Face Closeout
 
@@ -117,6 +134,7 @@ GitHub static-check succeeded for HEAD
 Hugging Face repo sha == HEAD
 Hugging Face runtime.raw.sha == HEAD
 Hugging Face runtime.stage == RUNNING
+Storage Bucket is mounted read-write at /data
 live smoke passed
 worktree has no uncommitted tracked changes
 ```

@@ -123,12 +123,25 @@ curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/logs?service=qwenpa
 
 ### Persistent data is missing after restart
 
-Persistent Storage may not be enabled. The runtime writes `/data/.qwenpaw_hfs_persistent_storage_probe` when `/data` is writable.
-Confirm with:
+The Storage Bucket volume may be missing or mounted at the wrong path. First read back
+the Space volume configuration:
+
+```bash
+hf spaces volumes list "$HF_SPACE_ID" --json
+```
+
+The expected entry has `type=bucket`, `mount_path=/data` and `read_only=false`. An empty
+list means `/data` is ephemeral. The runtime also writes
+`/data/.qwenpaw_hfs_persistent_storage_probe` when `/data` is writable; use the
+protected endpoint to confirm the in-container paths:
 
 ```bash
 curl -fsS -H "X-Ops-Token: $OPS_TOKEN" "$SMOKE_BASE_URL/_ops/persistence"
 ```
+
+`writable=true` alone is not proof of durability. Verify the volume readback, then
+restart or rebuild the Space and confirm `config_exists=true` and the account still
+exists.
 
 ### Browser-related skills fail
 
@@ -136,7 +149,10 @@ Inspect `xvfb.err.log` and confirm Chromium exists at `/usr/bin/chromium`.
 
 ### First admin account page appears again
 
-This usually means the Space is using a fresh or lost `/data` volume. Confirm Persistent Storage and check whether `/data/qwenpaw/working/config.json` exists. Do not create a new account unless the deployment is intentionally fresh.
+This usually means the Space is using a fresh, detached or lost `/data` volume. Confirm
+the Storage Bucket mount with `hf spaces volumes list`, then check whether
+`/data/qwenpaw/working/config.json` exists. Do not create a new account unless the
+deployment is intentionally fresh.
 
 ### `/_admin/` returns 404
 
