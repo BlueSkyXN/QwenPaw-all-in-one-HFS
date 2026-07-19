@@ -7,7 +7,7 @@ Use this runbook after the Space has built or when a live smoke check fails. Pre
 ```text
 /nginx-health       Nginx liveness
 /healthz            QwenPaw TCP/process liveness
-/readyz             QwenPaw background-startup readiness
+/readyz             QwenPaw core-agent readiness; later plugin/skill startup may continue
 /_ops/health        protected health alias
 /_ops/healthz       protected process liveness
 /_ops/readyz        protected upstream readiness
@@ -105,7 +105,7 @@ curl -H "X-Ops-Token: $OPS_TOKEN" https://space/_ops/logs?service=qwenpaw
 
 ### `/readyz` returns 503 while `/healthz` is 200
 
-The QwenPaw process has opened port `8088`, but its own `/api/healthz` still reports background startup, agent loading or migration work in progress. Check protected readiness and logs:
+The QwenPaw process has opened port `8088`, but its own `/api/healthz` still reports core-agent startup or migration work in progress. After `/readyz` becomes `200`, later plugin, skill-sync, or other background initialization may still continue, so also check a real app/API path and the logs:
 
 ```bash
 curl -H "X-Ops-Token: $OPS_TOKEN" https://space/_ops/readyz

@@ -180,13 +180,13 @@ Release-style build:
 docker build \
   -t qwenpaw-all-in-one-hfs:release \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
-  --build-arg QWENPAW_SOURCE_REF='6815e51d7199939bb199735f6b99fe02d2fa1b2b' \
-  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post2' \
+  --build-arg QWENPAW_SOURCE_REF='a15a69fca73e67c17dc47326e933eaa259fa0d8d' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post3' \
   --build-arg UV_VERSION='0.7.20' \
   .
 ```
 
-The default build fetches immutable upstream QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b`, validates that `src/qwenpaw/__version__.py` reports `2.0.0.post2`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree. Release validation can require this pin to equal the live upstream `main` head with `python3 scripts/check-qwenpaw-pins.py --require-upstream-main`.
+The default build fetches immutable upstream QwenPaw commit `a15a69fca73e67c17dc47326e933eaa259fa0d8d`, validates that `src/qwenpaw/__version__.py` reports `2.0.0.post3`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree. Release validation can require this pin to equal the live upstream `main` head with `python3 scripts/check-qwenpaw-pins.py --require-upstream-main`.
 
 ## Local Run
 
@@ -219,7 +219,7 @@ Public liveness:
 ```text
 /nginx-health   Nginx process liveness
 /healthz        QwenPaw TCP/process liveness
-/readyz         QwenPaw background-startup readiness via /api/healthz
+/readyz         QwenPaw core-agent readiness via /api/healthz; later background work may continue
 ```
 
 Protected read-only diagnostics:

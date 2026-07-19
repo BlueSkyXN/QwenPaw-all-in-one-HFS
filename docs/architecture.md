@@ -44,7 +44,7 @@ Docker build
   └─ copies docker/ runtime glue
 ```
 
-The current pinned source is QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b` with source version `2.0.0.post2`.
+The current pinned source is QwenPaw commit `a15a69fca73e67c17dc47326e933eaa259fa0d8d` with source version `2.0.0.post3`.
 
 ## Persistence Boundary
 
@@ -87,7 +87,7 @@ Nginx owns the public port and forwards:
 /                  -> QwenPaw web app
 /nginx-health      -> direct Nginx response
 /healthz           -> ops-service QwenPaw process liveness
-/readyz            -> ops-service probe of QwenPaw /api/healthz readiness
+/readyz            -> ops-service probe of QwenPaw /api/healthz core-agent readiness
 /_ops/*            -> ops-service protected diagnostics
 /_admin/*          -> admin-service boundary
 ```
