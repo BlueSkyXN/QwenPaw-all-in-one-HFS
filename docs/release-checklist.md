@@ -23,8 +23,8 @@ Record:
 ```text
 BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
-QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b
-QWENPAW_SOURCE_VERSION=2.0.0.post2
+QWENPAW_SOURCE_REF=a15a69fca73e67c17dc47326e933eaa259fa0d8d
+QWENPAW_SOURCE_VERSION=2.0.0.post3
 UV_VERSION=0.7.20
 ```
 
@@ -33,8 +33,8 @@ UV_VERSION=0.7.20
 ```bash
 docker build \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
-  --build-arg QWENPAW_SOURCE_REF='6815e51d7199939bb199735f6b99fe02d2fa1b2b' \
-  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post2' \
+  --build-arg QWENPAW_SOURCE_REF='a15a69fca73e67c17dc47326e933eaa259fa0d8d' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post3' \
   --build-arg UV_VERSION='0.7.20' \
   -t qwenpaw-all-in-one-hfs:release .
 ```
@@ -69,7 +69,7 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
   mounted at `/data`.
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
-- Confirm `/readyz` reports upstream QwenPaw startup readiness, not only an open TCP port.
+- Confirm `/readyz` reports upstream QwenPaw core-agent readiness, not only an open TCP port; verify a real app/API path after later background startup work settles.
 - When auth is enabled and a user exists, confirm an unauthenticated protected `/api/*` request returns `401`.
 - Confirm admin is disabled unless intentionally enabled.
 

@@ -45,7 +45,7 @@ QWENPAW_SOURCE_VERSION         expected qwenpaw.__version__
 UV_VERSION                     uv installer version
 ```
 
-The default build pins upstream QwenPaw commit `6815e51d7199939bb199735f6b99fe02d2fa1b2b` and expects source version `2.0.0.post2`. If the source commit changes, update the expected source version when needed and use the networked pin checker to verify whether the release must equal current upstream `main`.
+The default build pins upstream QwenPaw commit `a15a69fca73e67c17dc47326e933eaa259fa0d8d` and expects source version `2.0.0.post3`. If the source commit changes, update the expected source version when needed and use the networked pin checker to verify whether the release must equal current upstream `main`.
 
 ## Shared Runtime Contract
 

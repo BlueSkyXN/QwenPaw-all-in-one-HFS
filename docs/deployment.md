@@ -41,8 +41,8 @@ or:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_SOURCE_REF=6815e51d7199939bb199735f6b99fe02d2fa1b2b \
-  --build-arg QWENPAW_SOURCE_VERSION=2.0.0.post2 \
+  --build-arg QWENPAW_SOURCE_REF=a15a69fca73e67c17dc47326e933eaa259fa0d8d \
+  --build-arg QWENPAW_SOURCE_VERSION=2.0.0.post3 \
   .
 ```
 
