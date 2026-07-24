@@ -1,0 +1,44 @@
+name: build-console-bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Immutable upstream QwenPaw commit SHA
+        required: true
+        type: string
+      source_version:
+        description: Expected QwenPaw source version
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-console-bundle:
+    runs-on: ubuntu-latest
+    env:
+      SOURCE_REPO: https://github.com/agentscope-ai/QwenPaw.git
+      SOURCE_REF: ${{ inputs.source_ref }}
+      SOURCE_VERSION: ${{ inputs.source_version }}
+      NODE_OPTIONS: --max-old-space-size=8192
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build pinned upstream console bundle
+        run: |
+          bash scripts/build-console-bundle.sh \
+            "$SOURCE_REPO" \
+            "$SOURCE_REF" \
+            "$SOURCE_VERSION" \
+            console-bundle
+      - name: Upload console bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwenpaw-console-${{ inputs.source_ref }}
+          path: console-bundle/*
+          if-no-files-found: error
+          retention-days: 7

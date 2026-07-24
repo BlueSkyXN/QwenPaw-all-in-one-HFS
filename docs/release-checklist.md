@@ -31,6 +31,12 @@ QwenPaw 2.0.1 performs a one-time channel display configuration migration on fir
 and may rewrite `config.json` and agent `agent.json` files. Preserve the pre-upgrade copy
 until login, existing agents/channels, persistence, logs, and a restart have been verified.
 
+If the pinned upstream console exceeds the Hugging Face build worker memory limit, build
+the exact source commit with the manual GitHub Actions `build-console-bundle` workflow.
+Download its short-lived artifact, verify the generated checksum, then publish it as an
+immutable release asset before adding its URL and checksum to the HFS release pins. Do not
+substitute an artifact built from a tag or a different commit.
+
 ## Release Pins
 
 Record:
