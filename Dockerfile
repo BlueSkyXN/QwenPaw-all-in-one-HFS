@@ -84,6 +84,8 @@ RUN set -eux; \
 USER 1000
 WORKDIR /home/user/app
 
+# Keep Vite below the Hugging Face build worker cgroup limit so it can reclaim
+# memory instead of being terminated by the kernel during module transforms.
 RUN python3 -m venv /home/user/.venv \
     && python -m pip install --upgrade pip wheel \
     && if [ "${UV_VERSION}" = "latest" ]; then \
@@ -108,7 +110,7 @@ RUN python3 -m venv /home/user/.venv \
     && test "${source_version}" = "${QWENPAW_SOURCE_VERSION}" \
     && cd /tmp/qwenpaw-src/console \
     && NODE_ENV=development npm ci --include=dev --no-audit --no-fund \
-    && npm run build \
+    && NODE_OPTIONS=--max-old-space-size=3072 npm run build \
     && cd /tmp/qwenpaw-src \
     && rm -rf src/qwenpaw/console/* \
     && mkdir -p src/qwenpaw/console \

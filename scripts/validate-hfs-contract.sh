@@ -208,7 +208,7 @@ require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.1' Dockerfile "Dockerfile must defaul
 require_grep 'git fetch --depth 1 origin "\${QWENPAW_SOURCE_REF}"' Dockerfile "Dockerfile must fetch the pinned upstream source ref"
 require_grep 'src/qwenpaw/__version__\.py' Dockerfile "Dockerfile must validate the upstream source version"
 require_grep 'npm ci --include=dev --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend build dependencies"
-require_grep 'npm run build' Dockerfile "Dockerfile must build the console frontend from source"
+require_grep 'NODE_OPTIONS=--max-old-space-size=3072 npm run build' Dockerfile "Dockerfile must cap console build memory below the HFS worker limit"
 require_grep 'src/qwenpaw/console' Dockerfile "Dockerfile must copy console assets into the Python package source"
 require_grep '/tmp/qwenpaw-src' Dockerfile "Dockerfile must install QwenPaw from fetched source"
 require_absent 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must not install QwenPaw from PyPI package version in source-fetch mode"
