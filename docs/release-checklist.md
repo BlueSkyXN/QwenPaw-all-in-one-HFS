@@ -16,6 +16,21 @@ For release pin changes, also run the networked check:
 python3 scripts/check-qwenpaw-pins.py --require-upstream-main
 ```
 
+Before upgrading across an upstream release that migrates persisted configuration, copy
+the working directory to a private path in the same Storage Bucket. Keep the bucket ID
+and backup path in the local deployment ledger, not in Git:
+
+```bash
+RELEASE_BACKUP_ID="pre-upgrade-$(date -u +%Y%m%dT%H%M%SZ)"
+hf buckets cp \
+  "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/working/" \
+  "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/backups/$RELEASE_BACKUP_ID/working/"
+```
+
+QwenPaw 2.0.1 performs a one-time channel display configuration migration on first load
+and may rewrite `config.json` and agent `agent.json` files. Preserve the pre-upgrade copy
+until login, existing agents/channels, persistence, logs, and a restart have been verified.
+
 ## Release Pins
 
 Record:
@@ -23,8 +38,8 @@ Record:
 ```text
 BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
-QWENPAW_SOURCE_REF=a15a69fca73e67c17dc47326e933eaa259fa0d8d
-QWENPAW_SOURCE_VERSION=2.0.0.post3
+QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598
+QWENPAW_SOURCE_VERSION=2.0.1
 UV_VERSION=0.7.20
 ```
 
@@ -33,8 +48,8 @@ UV_VERSION=0.7.20
 ```bash
 docker build \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
-  --build-arg QWENPAW_SOURCE_REF='a15a69fca73e67c17dc47326e933eaa259fa0d8d' \
-  --build-arg QWENPAW_SOURCE_VERSION='2.0.0.post3' \
+  --build-arg QWENPAW_SOURCE_REF='ab814123c59f18b6045ff0204bf2ec5fb31fd598' \
+  --build-arg QWENPAW_SOURCE_VERSION='2.0.1' \
   --build-arg UV_VERSION='0.7.20' \
   -t qwenpaw-all-in-one-hfs:release .
 ```
