@@ -44,7 +44,7 @@ Docker build
   └─ copies docker/ runtime glue
 ```
 
-The current pinned source is QwenPaw commit `a15a69fca73e67c17dc47326e933eaa259fa0d8d` with source version `2.0.0.post3`.
+The current pinned source is QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598` with source version `2.0.1`.
 
 ## Persistence Boundary
 
