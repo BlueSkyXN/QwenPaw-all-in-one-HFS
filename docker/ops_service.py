@@ -339,6 +339,8 @@ def version_info() -> dict[str, Any]:
             "QWENPAW_SOURCE_REPO": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REPO", ""),
             "QWENPAW_SOURCE_REF": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REF", ""),
             "QWENPAW_SOURCE_VERSION": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_SOURCE_VERSION", ""),
+            "QWENPAW_CONSOLE_BUNDLE_URL": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_CONSOLE_BUNDLE_URL", ""),
+            "QWENPAW_CONSOLE_BUNDLE_SHA256": os.environ.get("QWENPAW_HFS_BUILD_QWENPAW_CONSOLE_BUNDLE_SHA256", ""),
             "UV_VERSION": os.environ.get("QWENPAW_AIO_BUILD_UV_VERSION", os.environ.get("QWENPAW_HFS_BUILD_UV_VERSION", "")),
         },
         "space": {

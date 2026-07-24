@@ -110,6 +110,8 @@ expected_pins = {
     "QWENPAW_SOURCE_REPO": {"type": "metadata", "required_for_release": True, "dev_mutable_default_allowed": True},
     "QWENPAW_SOURCE_REF": {"type": "git_ref", "required_for_release": True, "dev_mutable_default_allowed": True, "release_requires_commit_sha": True},
     "QWENPAW_SOURCE_VERSION": {"type": "package_version", "required_for_release": True, "dev_mutable_default_allowed": False},
+    "QWENPAW_CONSOLE_BUNDLE_URL": {"type": "artifact", "required_for_release": True, "dev_mutable_default_allowed": True, "release_requires_checksum": True},
+    "QWENPAW_CONSOLE_BUNDLE_SHA256": {"type": "checksum", "required_for_release": True, "dev_mutable_default_allowed": False},
     "UV_VERSION": {"type": "package_version", "required_for_release": True, "dev_mutable_default_allowed": True},
 }
 
@@ -199,23 +201,27 @@ require_grep '^ARG BASE_IMAGE_REF=' Dockerfile "Dockerfile must expose BASE_IMAG
 require_grep '^ARG QWENPAW_SOURCE_REPO=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_REPO build input"
 require_grep '^ARG QWENPAW_SOURCE_REF=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_REF build input"
 require_grep '^ARG QWENPAW_SOURCE_VERSION=' Dockerfile "Dockerfile must expose QWENPAW_SOURCE_VERSION build input"
+require_grep '^ARG QWENPAW_CONSOLE_BUNDLE_URL=' Dockerfile "Dockerfile must expose the console bundle artifact input"
+require_grep '^ARG QWENPAW_CONSOLE_BUNDLE_SHA256=[0-9a-f]{64}$' Dockerfile "Dockerfile must pin the console bundle checksum"
 require_grep '^ARG UV_VERSION=' Dockerfile "Dockerfile must expose UV_VERSION build input"
 require_grep '^FROM \${BASE_IMAGE_REF} AS runtime$' Dockerfile "Dockerfile must select base runtime image from BASE_IMAGE_REF"
 require_grep '^ARG BASE_IMAGE_REF=node:22-slim@sha256:[0-9a-f]{64}$' Dockerfile "Dockerfile release default must pin the base image by digest"
 require_grep 'QWENPAW_SOURCE_REPO=https://github\.com/agentscope-ai/QwenPaw\.git' Dockerfile "Dockerfile must default to the upstream QwenPaw source repository"
 require_grep 'QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598' Dockerfile "Dockerfile must default to the requested upstream source commit"
 require_grep 'QWENPAW_SOURCE_VERSION=2\.0\.1' Dockerfile "Dockerfile must default to the requested upstream source version"
+require_grep 'QWENPAW_CONSOLE_BUNDLE_URL=.*ab814123c59f18b6045ff0204bf2ec5fb31fd598' Dockerfile "console artifact must identify the pinned upstream source commit"
 require_grep 'git fetch --depth 1 origin "\${QWENPAW_SOURCE_REF}"' Dockerfile "Dockerfile must fetch the pinned upstream source ref"
 require_grep 'src/qwenpaw/__version__\.py' Dockerfile "Dockerfile must validate the upstream source version"
-require_grep 'npm ci --include=dev --no-audit --no-fund' Dockerfile "Dockerfile must install console frontend build dependencies"
-require_grep '\./node_modules/\.bin/tsc -b' Dockerfile "Dockerfile must type-check the console before bundling"
-require_grep 'NODE_OPTIONS=--max-old-space-size=3584 \./node_modules/\.bin/vite build' Dockerfile "Dockerfile must build the console within the measured HFS worker memory window"
-require_grep 'src/qwenpaw/console' Dockerfile "Dockerfile must copy console assets into the Python package source"
+require_grep 'sha256sum -c -' Dockerfile "Dockerfile must verify the console artifact before extraction"
+require_grep 'tar -xzf /tmp/qwenpaw-console\.tar\.gz -C src/qwenpaw/console' Dockerfile "Dockerfile must extract verified console assets into the Python package source"
+require_grep 'test -f src/qwenpaw/console/index\.html' Dockerfile "Dockerfile must require the console entrypoint"
+require_absent 'npm ci --include=dev' Dockerfile "HFS worker must not rebuild the memory-heavy upstream console"
 require_grep '/tmp/qwenpaw-src' Dockerfile "Dockerfile must install QwenPaw from fetched source"
 require_absent 'qwenpaw==\${QWENPAW_VERSION}' Dockerfile "Dockerfile must not install QwenPaw from PyPI package version in source-fetch mode"
 require_absent '^ARG QWENPAW_PACKAGE_SHA256=' Dockerfile "Dockerfile must not expose PyPI artifact checksum in source-fetch mode"
 require_grep 'fetch_source_ref' scripts/check-qwenpaw-pins.py "pin checker must fetch and validate the upstream source ref"
 require_grep 'QWENPAW_SOURCE_VERSION matches upstream source' scripts/check-qwenpaw-pins.py "pin checker must validate upstream source version"
+require_grep 'QWENPAW_CONSOLE_BUNDLE_SHA256 matches downloaded artifact' scripts/check-qwenpaw-pins.py "pin checker must validate the console artifact checksum"
 require_grep 'require-upstream-main' scripts/check-qwenpaw-pins.py "pin checker must support enforcing current upstream main"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"

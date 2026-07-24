@@ -53,6 +53,23 @@ dev_mutable_default_allowed = false
 description = "Expected qwenpaw.__version__ value in the pinned upstream source tree."
 
 [[release_pins]]
+name = "QWENPAW_CONSOLE_BUNDLE_URL"
+type = "artifact"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = true
+release_requires_checksum = true
+description = "Console bundle built from the exact pinned upstream source commit."
+
+[[release_pins]]
+name = "QWENPAW_CONSOLE_BUNDLE_SHA256"
+type = "checksum"
+source = "Dockerfile ARG"
+required_for_release = true
+dev_mutable_default_allowed = false
+description = "SHA-256 of the pinned QwenPaw console bundle."
+
+[[release_pins]]
 name = "UV_VERSION"
 type = "package_version"
 source = "Dockerfile ARG"

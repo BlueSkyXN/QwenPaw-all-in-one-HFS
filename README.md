@@ -50,7 +50,7 @@ Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 Pattern: A - HFS Port Repository
 Runtime mode: source-fetch
 Space root: repo root
-Source of truth: pinned upstream QwenPaw source commit
+Source of truth: pinned upstream QwenPaw source commit plus checksum-matched console artifact
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 ```
 
@@ -182,11 +182,13 @@ docker build \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
   --build-arg QWENPAW_SOURCE_REF='ab814123c59f18b6045ff0204bf2ec5fb31fd598' \
   --build-arg QWENPAW_SOURCE_VERSION='2.0.1' \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_URL='https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz' \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_SHA256='ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66' \
   --build-arg UV_VERSION='0.7.20' \
   .
 ```
 
-The default build fetches immutable upstream QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598`, validates that `src/qwenpaw/__version__.py` reports `2.0.1`, builds the console frontend, copies it into `src/qwenpaw/console/`, and installs QwenPaw from that source tree. Release validation can require this pin to equal the live upstream `main` head with `python3 scripts/check-qwenpaw-pins.py --require-upstream-main`.
+The default build fetches immutable upstream QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598`, validates that `src/qwenpaw/__version__.py` reports `2.0.1`, verifies and extracts the console artifact built from that exact commit, and installs QwenPaw from the fetched source tree. The console artifact is built in GitHub Actions because the QwenPaw 2.0.1 local Monaco bundle exceeds the Hugging Face build worker memory limit. Release validation checks both the source pin and downloaded artifact; `--require-upstream-main` additionally requires the pin to equal live upstream `main`.
 
 ## Local Run
 

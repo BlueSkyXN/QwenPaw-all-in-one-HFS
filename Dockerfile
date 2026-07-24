@@ -11,6 +11,7 @@
 #     --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
 #     --build-arg QWENPAW_SOURCE_REF='ab814123c59f18b6045ff0204bf2ec5fb31fd598' \
 #     --build-arg QWENPAW_SOURCE_VERSION='2.0.1' \
+#     --build-arg QWENPAW_CONSOLE_BUNDLE_SHA256='ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66' \
 #     --build-arg UV_VERSION='0.7.20' \
 #     -t qwenpaw-all-in-one-hfs:release .
 
@@ -21,6 +22,8 @@ ARG BASE_IMAGE_REF
 ARG QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
 ARG QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598
 ARG QWENPAW_SOURCE_VERSION=2.0.1
+ARG QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz
+ARG QWENPAW_CONSOLE_BUNDLE_SHA256=ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66
 ARG UV_VERSION=0.7.20
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -29,6 +32,8 @@ ENV QWENPAW_HFS_BUILD_RUNTIME_MODE=source-fetch
 ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REPO=${QWENPAW_SOURCE_REPO}
 ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_REF=${QWENPAW_SOURCE_REF}
 ENV QWENPAW_HFS_BUILD_QWENPAW_SOURCE_VERSION=${QWENPAW_SOURCE_VERSION}
+ENV QWENPAW_HFS_BUILD_QWENPAW_CONSOLE_BUNDLE_URL=${QWENPAW_CONSOLE_BUNDLE_URL}
+ENV QWENPAW_HFS_BUILD_QWENPAW_CONSOLE_BUNDLE_SHA256=${QWENPAW_CONSOLE_BUNDLE_SHA256}
 ENV QWENPAW_HFS_BUILD_UV_VERSION=${UV_VERSION}
 
 ENV NODE_ENV=production \
@@ -84,8 +89,6 @@ RUN set -eux; \
 USER 1000
 WORKDIR /home/user/app
 
-# Keep Vite below the Hugging Face build worker cgroup limit so it can reclaim
-# memory instead of being terminated by the kernel during module transforms.
 RUN python3 -m venv /home/user/.venv \
     && python -m pip install --upgrade pip wheel \
     && if [ "${UV_VERSION}" = "latest" ]; then \
@@ -108,14 +111,14 @@ RUN python3 -m venv /home/user/.venv \
        fi \
     && source_version="$(python -c "import runpy; print(runpy.run_path('src/qwenpaw/__version__.py')['__version__'])")" \
     && test "${source_version}" = "${QWENPAW_SOURCE_VERSION}" \
-    && cd /tmp/qwenpaw-src/console \
-    && NODE_ENV=development npm ci --include=dev --no-audit --no-fund \
-    && ./node_modules/.bin/tsc -b \
-    && NODE_OPTIONS=--max-old-space-size=3584 ./node_modules/.bin/vite build \
-    && cd /tmp/qwenpaw-src \
+    && printf '%s' "${QWENPAW_CONSOLE_BUNDLE_URL}" | grep -F "${QWENPAW_SOURCE_REF}" \
+    && printf '%s' "${QWENPAW_CONSOLE_BUNDLE_SHA256}" | grep -Eq '^[0-9a-f]{64}$' \
+    && curl -fsSL --retry 3 --retry-delay 2 "${QWENPAW_CONSOLE_BUNDLE_URL}" -o /tmp/qwenpaw-console.tar.gz \
+    && printf '%s  %s\n' "${QWENPAW_CONSOLE_BUNDLE_SHA256}" /tmp/qwenpaw-console.tar.gz | sha256sum -c - \
     && rm -rf src/qwenpaw/console/* \
     && mkdir -p src/qwenpaw/console \
-    && cp -R console/dist/. src/qwenpaw/console/ \
+    && tar -xzf /tmp/qwenpaw-console.tar.gz -C src/qwenpaw/console \
+    && test -f src/qwenpaw/console/index.html \
     && if [ -d website/public/docs ] && find website/public/docs -maxdepth 1 -name '*.md' | grep -q .; then \
          rm -rf src/qwenpaw/docs; \
          mkdir -p src/qwenpaw/docs; \
@@ -123,7 +126,7 @@ RUN python3 -m venv /home/user/.venv \
        fi \
     && uv pip install --python /home/user/.venv/bin/python --no-cache-dir /tmp/qwenpaw-src \
     && qwenpaw --version \
-    && rm -rf /tmp/qwenpaw-src /home/user/.npm
+    && rm -rf /tmp/qwenpaw-src /tmp/qwenpaw-console.tar.gz
 
 COPY --chown=1000:1000 docker/ /home/user/app/docker/
 COPY --chown=1000:1000 hfs-dev.toml /home/user/app/hfs-dev.toml
