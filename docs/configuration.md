@@ -15,6 +15,8 @@ Configuration is split into four surfaces:
 | `QWENPAW_SOURCE_REPO` | Upstream QwenPaw Git repository fetched during Docker build | Required |
 | `QWENPAW_SOURCE_REF` | Upstream QwenPaw commit installed from source | Required; release builds must use a full commit SHA |
 | `QWENPAW_SOURCE_VERSION` | Expected `qwenpaw.__version__` value in the pinned source tree | Required; change when the upstream source version changes |
+| `QWENPAW_CONSOLE_BUNDLE_URL` | Console release artifact built from the pinned source SHA | Required; URL must identify the full source SHA |
+| `QWENPAW_CONSOLE_BUNDLE_SHA256` | Console artifact SHA-256 | Required; update only after verifying the exact artifact |
 | `UV_VERSION` | uv installer version | Pin for release |
 
 Current default source pins:
@@ -24,10 +26,12 @@ BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca44
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
 QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598
 QWENPAW_SOURCE_VERSION=2.0.1
+QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz
+QWENPAW_CONSOLE_BUNDLE_SHA256=ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66
 UV_VERSION=0.7.20
 ```
 
-The source ref is an immutable snapshot of upstream `main`. Use `python3 scripts/check-qwenpaw-pins.py --require-upstream-main` when a release must track the current live `main` head; the package version alone cannot distinguish later commits that retain the same version string.
+The source ref is an immutable snapshot of upstream `main`. The console URL must contain that same full SHA, and the checksum must match the downloaded archive. Use `python3 scripts/check-qwenpaw-pins.py --require-upstream-main` to verify all three surfaces and require the source pin to equal the current live `main` head; the package version alone cannot distinguish later commits that retain the same version string.
 
 ## Runtime Variables
 

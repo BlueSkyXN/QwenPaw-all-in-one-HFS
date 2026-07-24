@@ -2,18 +2,23 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_QWENPAW_REMOTE = "https://github.com/agentscope-ai/QwenPaw.git"
 VERSION_FILE = "src/qwenpaw/__version__.py"
+MAX_CONSOLE_BUNDLE_BYTES = 128 * 1024 * 1024
 
 
 class CheckError(RuntimeError):
@@ -78,6 +83,36 @@ def fetch_source_ref(remote: str, ref: str) -> tuple[str, str]:
     return resolved, match.group(1)
 
 
+def fetch_console_bundle(url: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "qwenpaw-hfs-pin-check/1"})
+    with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310 - release URL is validated by the caller.
+        payload = response.read(MAX_CONSOLE_BUNDLE_BYTES + 1)
+    if len(payload) > MAX_CONSOLE_BUNDLE_BYTES:
+        raise CheckError("QWENPAW_CONSOLE_BUNDLE_URL exceeded the 128 MiB validation limit")
+    return payload
+
+
+def validate_console_bundle(payload: bytes) -> None:
+    try:
+        with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+            members = archive.getmembers()
+    except tarfile.TarError as exc:
+        raise CheckError(f"console bundle is not a valid gzip tar archive: {exc}") from exc
+
+    if not members:
+        raise CheckError("console bundle is empty")
+    normalized_names: set[str] = set()
+    for member in members:
+        path = Path(member.name)
+        if path.is_absolute() or ".." in path.parts:
+            raise CheckError(f"console bundle contains unsafe path: {member.name}")
+        if member.issym() or member.islnk():
+            raise CheckError(f"console bundle contains link entry: {member.name}")
+        normalized_names.add(member.name.removeprefix("./"))
+    if "index.html" not in normalized_names:
+        raise CheckError("console bundle does not contain index.html")
+
+
 def check_equal(name: str, actual: str, expected: str, checks: list[dict[str, Any]]) -> None:
     checks.append({"name": name, "ok": actual == expected, "actual": actual, "expected": expected})
 
@@ -105,16 +140,34 @@ def main() -> int:
         source_repo = pins.get("QWENPAW_SOURCE_REPO", "")
         source_ref = pins.get("QWENPAW_SOURCE_REF", "")
         source_version = pins.get("QWENPAW_SOURCE_VERSION", "")
+        console_bundle_url = pins.get("QWENPAW_CONSOLE_BUNDLE_URL", "")
+        console_bundle_sha256 = pins.get("QWENPAW_CONSOLE_BUNDLE_SHA256", "")
 
         check_equal("QWENPAW_SOURCE_REPO matches expected upstream", source_repo, args.qwenpaw_remote, checks)
         if not source_ref:
             raise CheckError("Dockerfile did not set QWENPAW_SOURCE_REF")
         if not source_version:
             raise CheckError("Dockerfile did not set QWENPAW_SOURCE_VERSION")
+        if source_ref not in console_bundle_url:
+            raise CheckError("QWENPAW_CONSOLE_BUNDLE_URL must identify QWENPAW_SOURCE_REF")
+        if not re.fullmatch(r"[0-9a-f]{64}", console_bundle_sha256):
+            raise CheckError("QWENPAW_CONSOLE_BUNDLE_SHA256 must be a 64-character lowercase SHA-256")
 
         resolved_ref, resolved_version = fetch_source_ref(source_repo or args.qwenpaw_remote, source_ref)
         check_equal("QWENPAW_SOURCE_REF resolves to pinned commit", resolved_ref, source_ref, checks)
         check_equal("QWENPAW_SOURCE_VERSION matches upstream source", resolved_version, source_version, checks)
+
+        console_bundle = fetch_console_bundle(console_bundle_url)
+        actual_console_sha256 = hashlib.sha256(console_bundle).hexdigest()
+        check_equal(
+            "QWENPAW_CONSOLE_BUNDLE_SHA256 matches downloaded artifact",
+            actual_console_sha256,
+            console_bundle_sha256,
+            checks,
+        )
+        if actual_console_sha256 == console_bundle_sha256:
+            validate_console_bundle(console_bundle)
+            checks.append({"name": "QWENPAW_CONSOLE_BUNDLE archive is safe and complete", "ok": True})
 
         try:
             upstream_main = git_remote_ref(source_repo or args.qwenpaw_remote, "refs/heads/main")

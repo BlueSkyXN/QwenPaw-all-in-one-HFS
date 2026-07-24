@@ -102,8 +102,9 @@ additional commands without checking real files first.
   `cloud/hfs/Dockerfile`.
 - Do not vendor upstream QwenPaw source into this repository. The `source-fetch` runtime
   must fetch the pinned upstream commit during Docker build.
-- If `QWENPAW_SOURCE_REF` changes, update `QWENPAW_SOURCE_VERSION` when needed and keep
-  release pin docs and validators consistent.
+- If `QWENPAW_SOURCE_REF` changes, update `QWENPAW_SOURCE_VERSION` when needed, rebuild
+  and repin `QWENPAW_CONSOLE_BUNDLE_URL`/`QWENPAW_CONSOLE_BUNDLE_SHA256`, and keep release
+  pin docs and validators consistent.
 - Release builds must use an immutable `BASE_IMAGE_REF` digest. Mutable base tags are
   acceptable only for local development builds.
 - The public Space port is `7860`. QwenPaw runs internally on `8088`; ops-service runs

@@ -38,13 +38,13 @@ Docker build
   ├─ installs uv
   ├─ fetches QWENPAW_SOURCE_REF from QWENPAW_SOURCE_REPO
   ├─ verifies QWENPAW_SOURCE_VERSION from src/qwenpaw/__version__.py
-  ├─ builds console frontend assets
-  ├─ copies console/dist into src/qwenpaw/console
+  ├─ downloads and verifies QWENPAW_CONSOLE_BUNDLE_SHA256
+  ├─ extracts the same-commit console bundle into src/qwenpaw/console
   ├─ installs QwenPaw from the fetched source tree
   └─ copies docker/ runtime glue
 ```
 
-The current pinned source is QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598` with source version `2.0.1`.
+The current pinned source is QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598` with source version `2.0.1`. Its console bundle is built from the same commit on a GitHub runner and checksum-verified before the source tree is installed; upstream product source is still fetched rather than vendored.
 
 ## Persistence Boundary
 

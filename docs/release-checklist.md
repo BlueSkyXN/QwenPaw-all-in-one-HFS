@@ -46,6 +46,8 @@ BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca44
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
 QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598
 QWENPAW_SOURCE_VERSION=2.0.1
+QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz
+QWENPAW_CONSOLE_BUNDLE_SHA256=ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66
 UV_VERSION=0.7.20
 ```
 
@@ -56,6 +58,8 @@ docker build \
   --build-arg BASE_IMAGE_REF='node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3' \
   --build-arg QWENPAW_SOURCE_REF='ab814123c59f18b6045ff0204bf2ec5fb31fd598' \
   --build-arg QWENPAW_SOURCE_VERSION='2.0.1' \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_URL='https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz' \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_SHA256='ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66' \
   --build-arg UV_VERSION='0.7.20' \
   -t qwenpaw-all-in-one-hfs:release .
 ```
