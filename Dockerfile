@@ -110,7 +110,8 @@ RUN python3 -m venv /home/user/.venv \
     && test "${source_version}" = "${QWENPAW_SOURCE_VERSION}" \
     && cd /tmp/qwenpaw-src/console \
     && NODE_ENV=development npm ci --include=dev --no-audit --no-fund \
-    && NODE_OPTIONS=--max-old-space-size=3584 npm run build \
+    && ./node_modules/.bin/tsc -b \
+    && NODE_OPTIONS=--max-old-space-size=3264 ./node_modules/.bin/vite build \
     && cd /tmp/qwenpaw-src \
     && rm -rf src/qwenpaw/console/* \
     && mkdir -p src/qwenpaw/console \
