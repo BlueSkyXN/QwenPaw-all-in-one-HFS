@@ -2,8 +2,8 @@
 
 Maintainer automation for validation, local Docker build/run, and Space smoke checks. Read
 this card before changing any script or moving validation logic.
-Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`, `test_runtime_helpers.py`,
-`hf-space-smoke.sh`, `admin-smoke.sh`, `local-build.sh`, `local-run.sh`.
+Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`, `build-console-bundle.sh`,
+`test_runtime_helpers.py`, `hf-space-smoke.sh`, `admin-smoke.sh`, `local-build.sh`, `local-run.sh`.
 
 ## Local invariants
 
@@ -18,6 +18,8 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
   admin actions only when explicitly requested.
 - `check-qwenpaw-pins.py` is a networked release gate for package/version pin drift. Do
   not make it part of the default no-network static gate.
+- `build-console-bundle.sh` must build only an immutable upstream commit, verify its source
+  version, and emit a checksum beside the bundle. It must not publish artifacts itself.
 - Local build/run helpers may require Docker; syntax and static validation must not.
 
 ## Required before changes

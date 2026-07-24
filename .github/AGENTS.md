@@ -2,7 +2,7 @@
 
 This directory contains GitHub Actions workflow configuration. Read this card before
 modifying workflow triggers, jobs, permissions, or validation commands.
-Key file: `workflows/static-check.yml`.
+Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`.
 
 ## Why this is high-risk
 
@@ -18,6 +18,9 @@ Key file: `workflows/static-check.yml`.
   provider API keys, Docker Hub credentials, or local `.env.local` values.
 - Keep workflow logs free of real tokens, Space secrets, browser session data, and private
   deployment records.
+- The manual console-bundle workflow must validate an immutable upstream source SHA and
+  version before uploading the short-lived build artifact. Publishing that artifact as a
+  release asset remains an explicit maintainer action.
 
 ## Required before changes
 
