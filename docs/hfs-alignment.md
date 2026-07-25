@@ -47,7 +47,7 @@ QWENPAW_CONSOLE_BUNDLE_SHA256  console artifact checksum
 UV_VERSION                     uv installer version
 ```
 
-The default build pins upstream QwenPaw commit `ab814123c59f18b6045ff0204bf2ec5fb31fd598`, expects source version `2.0.1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66`. If the source commit changes, rebuild and repin the console artifact as well as the expected source version, then use the networked pin checker to verify the source and artifact together.
+The default build pins upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, expects source version `2.0.1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf`. If the source commit changes, rebuild and repin the console artifact as well as the expected source version, then use the networked pin checker to verify the source and artifact together.
 
 ## Shared Runtime Contract
 
