@@ -24,10 +24,10 @@ Current default source pins:
 ```text
 BASE_IMAGE_REF=node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3
 QWENPAW_SOURCE_REPO=https://github.com/agentscope-ai/QwenPaw.git
-QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598
+QWENPAW_SOURCE_REF=734c8b9fa610381fa6d79b10ae3641b6db4a8cb2
 QWENPAW_SOURCE_VERSION=2.0.1
-QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz
-QWENPAW_CONSOLE_BUNDLE_SHA256=ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66
+QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-734c8b9f/qwenpaw-console-734c8b9fa610381fa6d79b10ae3641b6db4a8cb2.tar.gz
+QWENPAW_CONSOLE_BUNDLE_SHA256=c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf
 UV_VERSION=0.7.20
 ```
 

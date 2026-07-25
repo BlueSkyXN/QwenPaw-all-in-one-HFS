@@ -41,10 +41,10 @@ or:
 ```bash
 docker build \
   -t qwenpaw-all-in-one-hfs:dev \
-  --build-arg QWENPAW_SOURCE_REF=ab814123c59f18b6045ff0204bf2ec5fb31fd598 \
+  --build-arg QWENPAW_SOURCE_REF=734c8b9fa610381fa6d79b10ae3641b6db4a8cb2 \
   --build-arg QWENPAW_SOURCE_VERSION=2.0.1 \
-  --build-arg QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-ab814123/qwenpaw-console-ab814123c59f18b6045ff0204bf2ec5fb31fd598.tar.gz \
-  --build-arg QWENPAW_CONSOLE_BUNDLE_SHA256=ce5cc067101ea505ce89664d15a1b757124eeac22a04b273ccc7c016d7b22c66 \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_URL=https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS/releases/download/qwenpaw-console-734c8b9f/qwenpaw-console-734c8b9fa610381fa6d79b10ae3641b6db4a8cb2.tar.gz \
+  --build-arg QWENPAW_CONSOLE_BUNDLE_SHA256=c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf \
   .
 ```
 
