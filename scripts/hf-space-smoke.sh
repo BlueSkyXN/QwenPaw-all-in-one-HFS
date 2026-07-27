@@ -68,7 +68,8 @@ import json
 import os
 import sys
 
-pins = json.load(sys.stdin).get("release_pins", {})
+payload = json.load(sys.stdin)
+pins = payload.get("version", {}).get("release_pins", {})
 expected = {
     "QWENPAW_SOURCE_REF": os.environ["EXPECTED_SOURCE_REF"],
     "QWENPAW_SOURCE_VERSION": os.environ["EXPECTED_SOURCE_VERSION"],

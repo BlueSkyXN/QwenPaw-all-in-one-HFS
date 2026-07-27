@@ -338,6 +338,7 @@ require_grep 'QWENPAW_SOURCE_VERSION matches upstream source' scripts/check-qwen
 require_grep 'QWENPAW_CONSOLE_BUNDLE_SHA256 matches downloaded artifact' scripts/check-qwenpaw-pins.py "pin checker must validate the console bundle checksum"
 require_grep 'EXPECTED_QWENPAW_SOURCE_REF' scripts/hf-space-smoke.sh "live smoke must verify the runtime source SHA"
 require_grep 'console bundle provenance does not contain the runtime source SHA' scripts/hf-space-smoke.sh "live smoke must bind console provenance to source SHA"
+require_grep 'payload\.get\("version", \{\}\)\.get\("release_pins", \{\}\)' scripts/hf-space-smoke.sh "live smoke must read provenance from the wrapped ops version payload"
 require_grep 'hf_space_sync.py diff' docs/configuration.md "configuration docs must include Settings diff/readback"
 require_grep 'hf_space_sync.py push' docs/configuration.md "configuration docs must include Settings push"
 require_grep 'require-upstream-main' scripts/check-qwenpaw-pins.py "pin checker must support enforcing current upstream main"
