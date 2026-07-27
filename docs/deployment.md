@@ -13,10 +13,10 @@ This repository is deployed as a repo-root Hugging Face Docker Space. GitHub and
 Recommended local ledger:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
 
-Fill `GH_REPO`, `HF_SPACE_ID`, `SMOKE_BASE_URL` and `OPS_TOKEN` in `.env.local`. Keep real values local-only.
+Fill `.env` from the committed no-secret template. It is the local HFS value ledger for control values, Space Variables, Space Secrets, and smoke inputs; keep real values local-only. `.env.local` remains ignored only for local Docker/run compatibility.
 
 ## Lightweight Local Checks
 
@@ -91,13 +91,15 @@ The expected volume has `type=bucket`, `mount_path=/data` and `read_only=false`.
 `hf spaces volumes set` replaces the complete volume list, so include every existing
 mount in the command instead of accidentally dropping unrelated volumes.
 
-Record the bucket ID only in local `.env.local` or another private deployment ledger:
+Record the bucket ID only in local `.env` or another private deployment ledger:
 
 ```env
 HF_STORAGE_BUCKET=<namespace>/<bucket-name>
 ```
 
 ## Hugging Face Space
+
+This documentation describes a later release gate. A local semantic-manifest change does not publish to a remote, update Space Settings, or cause Space takeover.
 
 1. Create a Docker Space.
 2. Push this repository root to the Space repository.
@@ -107,7 +109,7 @@ HF_STORAGE_BUCKET=<namespace>/<bucket-name>
 5. Wait for build and runtime takeover.
 6. Run smoke against the live Space URL.
 
-GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Treat the Space as available only after live smoke passes.
+GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Execute them only as an explicitly approved release operation; treat the Space as available only after live smoke passes.
 
 ## Push Flow
 
@@ -161,7 +163,7 @@ runtime.raw.sha == HEAD
 
 ```bash
 set -a
-. ./.env.local
+. ./.env
 set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
@@ -189,7 +191,7 @@ The QwenPaw auth-boundary assertion runs when authentication is enabled and a us
 ## First-Run Browser Verification
 
 On a fresh attached `/data` volume, QwenPaw shows `Create Account`. Use the browser to
-create the first admin account only with credentials stored in local `.env.local`:
+create the first admin account only with credentials stored in local `.env`:
 
 ```env
 QWENPAW_ADMIN_USERNAME=<local-test-admin-name>

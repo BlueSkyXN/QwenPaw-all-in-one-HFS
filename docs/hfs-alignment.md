@@ -6,11 +6,11 @@
 
 ```text
 Pattern A: HFS Port Repository
-Runtime mode: source-fetch
+HFS v2: sovereignty = "port", lane = "source", version_source = "commit"
 Space root: repo root
-Source of truth: pinned upstream QwenPaw source commit
+Source of truth: Dockerfile's pinned upstream QwenPaw source commit
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
-Alignment manifest: hfs-dev.toml
+Semantic registry: hfs-dev.toml
 ```
 
 This repository is not the upstream QwenPaw product source. It is the Hugging Face Docker Space delivery package for QwenPaw.
@@ -31,11 +31,11 @@ cloud/hfs/README.md
 cloud/hfs/Dockerfile
 ```
 
-## Runtime Mode
+## Source Lane and Build Evidence
 
-The runtime mode is `source-fetch`: Docker build fetches and installs a pinned upstream QwenPaw commit. It also downloads a checksum-pinned console artifact built from that exact commit, verifies it before extraction, and places it in the Python package source tree. The artifact avoids rebuilding the QwenPaw 2.0.1 local Monaco bundle inside the smaller Hugging Face build worker.
+This is the HFS `source` lane: Docker build fetches and installs a pinned upstream QwenPaw commit. It also downloads a checksum-pinned console bundle built from that exact commit, verifies it before extraction, and places it in the Python package source tree. The bundle avoids rebuilding the QwenPaw 2.0.1 local Monaco bundle inside the smaller Hugging Face build worker; it is a companion product of the source build, not an `artifact` lane application payload.
 
-Release pins:
+The semantic `hfs-dev.toml` does not duplicate pin values. Its project/Space identity, lane, version-source choice, and environment-key categories are consumed as HFS metadata. The following immutable build inputs remain implementation evidence in `Dockerfile`:
 
 ```text
 BASE_IMAGE_REF                 image digest required for release
@@ -47,7 +47,7 @@ QWENPAW_CONSOLE_BUNDLE_SHA256  console artifact checksum
 UV_VERSION                     uv installer version
 ```
 
-The default build pins upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, expects source version `2.0.1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf`. If the source commit changes, rebuild and repin the console artifact as well as the expected source version, then use the networked pin checker to verify the source and artifact together.
+The default build pins upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, expects source version `2.0.1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf`. If the source commit changes, rebuild and repin the companion console bundle as well as the expected source version, then use `scripts/check-qwenpaw-pins.py` to verify the source and bundle together. `scripts/build-console-bundle.sh` and the manual `build-console-bundle` workflow are the paired build evidence; neither changes the lane.
 
 ## Shared Runtime Contract
 
@@ -57,7 +57,7 @@ Current implementation covers:
 | --- | --- |
 | Space metadata | `README.md` frontmatter has `sdk: docker` and `app_port: 7860` |
 | Space root | root-level `Dockerfile` |
-| Manifest | root-level `hfs-dev.toml` |
+| Semantic HFS registry | root-level `hfs-dev.toml` records identity, `port` sovereignty, `source` lane, `commit` version source, and environment-key ownership |
 | Single public port | `README.md`, `Dockerfile EXPOSE`, and Nginx all use `7860` |
 | Multi-service routing | Nginx routes QwenPaw, ops and admin under one public port |
 | Reverse-proxy auth | persisted `trusted_proxies` includes only local Nginx; forwarding headers are sanitized |
@@ -71,4 +71,4 @@ Current implementation covers:
 
 ## Source Fetch Boundary
 
-Do not vendor upstream QwenPaw into this repository. Product behavior belongs upstream; this HFS port advances by changing `QWENPAW_SOURCE_REF`, validating `QWENPAW_SOURCE_VERSION`, publishing a checksum-pinned console bundle from the same commit when needed, and rebuilding the Space.
+Do not vendor upstream QwenPaw into this repository. Product behavior belongs upstream; this HFS port advances by changing `QWENPAW_SOURCE_REF`, validating `QWENPAW_SOURCE_VERSION`, publishing a checksum-pinned companion console bundle from the same commit when needed, and rebuilding the Space. Publishing remotely or waiting for Space takeover is a separate release gate after the local contract change; it is not implied by static alignment.

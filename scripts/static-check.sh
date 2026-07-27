@@ -24,13 +24,21 @@ bash -n scripts/local-run.sh
 
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_runtime_helpers.py'
 
-PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile \
+# compile() validates Python syntax without creating persistent .pyc files.
+python3 - \
   docker/prepare_runtime_config.py \
   docker/ops_service.py \
   docker/admin_service.py \
   scripts/check-qwenpaw-pins.py \
-  scripts/test_runtime_helpers.py
-rm -rf docker/__pycache__
-rm -rf scripts/__pycache__
+  scripts/test_runtime_helpers.py <<'PY_COMPILE'
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+for name in sys.argv[1:]:
+    path = Path(name)
+    compile(path.read_text(encoding="utf-8"), str(path), "exec")
+PY_COMPILE
 
 printf 'PASS static-check\n'

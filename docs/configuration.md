@@ -5,7 +5,9 @@ Configuration is split into four surfaces:
 - Docker build args, which select and pin the upstream source tree.
 - Hugging Face Space Variables, which are safe runtime defaults.
 - Hugging Face Space Secrets, which are sensitive runtime values.
-- Local `.env.local`, which records deployment metadata and private smoke/login values for maintainers.
+- The ignored local `.env` HFS value ledger, which records local control, deployment, and private smoke/login values.
+
+`hfs-dev.toml` is the semantic HFS v2 registry for these surfaces: it records the key names and their ownership only. It contains no values, build pins, seed configuration, mount configuration, or bucket configuration. `.env.local` remains ignored for compatibility with local Docker/run workflows, but `.env` is the canonical HFS value ledger.
 
 ## Build Args
 
@@ -31,7 +33,7 @@ QWENPAW_CONSOLE_BUNDLE_SHA256=c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101d
 UV_VERSION=0.7.20
 ```
 
-The source ref is an immutable snapshot of upstream `main`. The console URL must contain that same full SHA, and the checksum must match the downloaded archive. Use `python3 scripts/check-qwenpaw-pins.py --require-upstream-main` to verify all three surfaces and require the source pin to equal the current live `main` head; the package version alone cannot distinguish later commits that retain the same version string.
+The source ref is an immutable snapshot of upstream `main`. The console URL must contain that same full SHA, and the checksum must match the downloaded archive. These are Dockerfile implementation pins, not HFS manifest fields. `scripts/check-qwenpaw-pins.py` verifies the source and companion bundle; `scripts/build-console-bundle.sh` plus the manual bundle workflow produce the paired console output when needed. The bundle does not make this source-lane port an artifact-lane deployment. Use `python3 scripts/check-qwenpaw-pins.py --require-upstream-main` only during an explicitly requested networked release check; the package version alone cannot distinguish later commits that retain the same version string.
 
 ## Runtime Variables
 
@@ -88,9 +90,27 @@ DISCORD_BOT_TOKEN=<optional>
 
 Prefer `X-Ops-Token` or `Authorization: Bearer` for scripts. The query token form is only for manual browser diagnostics; after validation it sets a signed HttpOnly cookie scoped to `/_ops/` and redirects to a URL without the token query string.
 
-## Local `.env.local` Ledger
+## Local `.env` Value Ledger
 
-`.env.local` is for machine-local deployment records and smoke credentials. It is ignored by git and Docker build context.
+`.env` is the machine-local HFS value ledger for deployment records, Space values, and smoke credentials. It is ignored by git and Docker build context. Start from the committed no-secret template:
+
+Use the candidate or production manifest explicitly for Settings `diff → push → readback`:
+
+```bash
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+```
+
+Secret values are never read back; verify Secret names and Variable values. Do not use
+`--prune --yes` until the separately approved cleanup window. The ignored legacy local wrapper
+remains read-only rollback material through the 7-day observation period.
+
+```bash
+cp .env.example .env
+```
+
+`.env.local` is also ignored, but is retained only for existing local Docker/run compatibility; do not use it as a second HFS source of truth.
 
 Suggested non-secret metadata:
 
@@ -102,7 +122,7 @@ HF_PUBLIC_URL=https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space
 SMOKE_BASE_URL=https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space
 ```
 
-Suggested local-only secrets and test records:
+Suggested local-only control values, secrets, and test records:
 
 ```env
 OPS_TOKEN=<same value configured in Hugging Face Space Settings>
@@ -114,4 +134,4 @@ QWENPAW_ADMIN_USERNAME=<first-run browser test username>
 QWENPAW_ADMIN_PASSWORD=<first-run browser test password>
 ```
 
-Do not commit `.env.local`, key files, database files, screenshots, runtime exports or logs.
+Do not commit `.env`, `.env.local`, `config.toml`, key files, database files, screenshots, runtime exports or logs.

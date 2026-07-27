@@ -1,6 +1,6 @@
 # Release Checklist
 
-Use this checklist when changing runtime behavior, release pins, deployment docs or anything that affects the Hugging Face Space. For docs-only changes, the Docker build steps may be delegated to GitHub Actions/Hugging Face, but the final closeout still needs both remotes and live runtime state.
+Use this checklist only for an explicitly approved release operation that changes runtime behavior, build pins, deployment docs, or the Hugging Face Space. A semantic-manifest or documentation change is complete locally after static validation; remote publication, Space takeover, and live runtime verification are subsequent independent gates.
 
 ## Static
 
@@ -33,9 +33,10 @@ until login, existing agents/channels, persistence, logs, and a restart have bee
 
 If the pinned upstream console exceeds the Hugging Face build worker memory limit, build
 the exact source commit with the manual GitHub Actions `build-console-bundle` workflow.
-Download its short-lived artifact, verify the generated checksum, then publish it as an
-immutable release asset before adding its URL and checksum to the HFS release pins. Do not
-substitute an artifact built from a tag or a different commit.
+Download its short-lived bundle, verify the generated checksum, then publish it as an
+immutable companion release asset before adding its URL and checksum to the Dockerfile build
+pins. Do not substitute a bundle built from a tag or a different commit. This paired bundle
+does not change the HFS `source` lane to an `artifact` lane.
 
 ## Release Pins
 
@@ -119,10 +120,10 @@ Before pushing:
 
 ```bash
 git status --short --branch
-git check-ignore -v .env.local local/ .DS_Store
+git check-ignore -v .env .env.local config.toml local/ .DS_Store
 ```
 
-Commit only tracked public files. Do not stage `.env.local`, `local/`, runtime data, logs or screenshots.
+Commit only tracked public files. Do not stage `.env`, `.env.local`, `config.toml`, `local/`, runtime data, logs or screenshots.
 
 Push:
 
@@ -166,11 +167,11 @@ worktree has no uncommitted tracked changes
 
 ## Browser Login Check
 
-For fresh deployments, verify first-account creation in a browser:
+For fresh deployments, verify first-account creation in a browser using local values from `.env` (or the ignored `.env.local` compatibility file):
 
 ```text
 /login?redirect=%2F shows Create Account
-registration succeeds with local-only .env.local test credentials
+registration succeeds with local-only .env test credentials
 the app redirects to /chat
 Logout is visible
 browser console has no warn/error entries relevant to the app
