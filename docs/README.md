@@ -34,11 +34,11 @@ bash scripts/static-check.sh
 bash scripts/validate-hfs-contract.sh
 ```
 
-Live Space smoke, using local-only values from `.env.local`:
+Live Space smoke, using local-only values from the canonical `.env` ledger:
 
 ```bash
 set -a
-. ./.env.local
+. ./.env
 set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```

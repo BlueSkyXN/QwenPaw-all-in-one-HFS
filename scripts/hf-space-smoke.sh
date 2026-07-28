@@ -6,6 +6,18 @@ base="${base%/}"
 ops_token="${OPS_TOKEN:-${QWENPAW_OPS_TOKEN:-}}"
 admin_token="${ADMIN_TOKEN:-${QWENPAW_ADMIN_TOKEN:-}}"
 admin_expected="${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}"
+expected_source_ref="${EXPECTED_QWENPAW_SOURCE_REF:-}"
+expected_source_version="${EXPECTED_QWENPAW_SOURCE_VERSION:-}"
+expected_console_sha256="${EXPECTED_QWENPAW_CONSOLE_BUNDLE_SHA256:-}"
+
+if [ -n "$expected_source_ref" ] && [[ ! "$expected_source_ref" =~ ^[0-9a-f]{40}$ ]]; then
+  printf 'FAIL smoke: EXPECTED_QWENPAW_SOURCE_REF must be a lowercase full Git SHA\n' >&2
+  exit 2
+fi
+if [ -n "$expected_console_sha256" ] && [[ ! "$expected_console_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+  printf 'FAIL smoke: EXPECTED_QWENPAW_CONSOLE_BUNDLE_SHA256 must be a lowercase SHA-256 digest\n' >&2
+  exit 2
+fi
 
 check() {
   local name=$1
@@ -47,7 +59,31 @@ if [ -n "$ops_token" ]; then
   check ops-status "$base/_ops/status" -H "X-Ops-Token: $ops_token"
   check ops-config "$base/_ops/config" -H "X-Ops-Token: $ops_token"
   check ops-persistence "$base/_ops/persistence" -H "X-Ops-Token: $ops_token"
-  check ops-version "$base/_ops/version" -H "X-Ops-Token: $ops_token"
+  version_json=$(curl -fsS --max-time 20 -H "X-Ops-Token: $ops_token" "$base/_ops/version")
+  EXPECTED_SOURCE_REF="$expected_source_ref" \
+  EXPECTED_SOURCE_VERSION="$expected_source_version" \
+  EXPECTED_CONSOLE_SHA256="$expected_console_sha256" \
+    python3 -c '
+import json
+import os
+import sys
+
+payload = json.load(sys.stdin)
+pins = payload.get("version", {}).get("release_pins", {})
+expected = {
+    "QWENPAW_SOURCE_REF": os.environ["EXPECTED_SOURCE_REF"],
+    "QWENPAW_SOURCE_VERSION": os.environ["EXPECTED_SOURCE_VERSION"],
+    "QWENPAW_CONSOLE_BUNDLE_SHA256": os.environ["EXPECTED_CONSOLE_SHA256"],
+}
+for key, value in expected.items():
+    if value and pins.get(key) != value:
+        raise SystemExit(f"{key} mismatch: expected={value!r} actual={pins.get(key)!r}")
+source_ref = pins.get("QWENPAW_SOURCE_REF", "")
+bundle_url = pins.get("QWENPAW_CONSOLE_BUNDLE_URL", "")
+if source_ref not in bundle_url:
+    raise SystemExit("console bundle provenance does not contain the runtime source SHA")
+' <<<"$version_json"
+  printf 'PASS smoke: ops-version provenance\n'
 else
   printf 'WARN smoke: OPS_TOKEN not set; protected /_ops checks skipped\n' >&2
 fi

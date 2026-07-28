@@ -39,7 +39,7 @@ The Space should be treated as private/protected unless you have reviewed QwenPa
 Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 
 - [`docs/deployment.md`](docs/deployment.md) for GitHub/Hugging Face deployment and runtime takeover.
-- [`docs/configuration.md`](docs/configuration.md) for build args, runtime variables, secrets and local `.env.local` ledger keys.
+- [`docs/configuration.md`](docs/configuration.md) for build args, runtime variables, secrets and the local `.env` value ledger.
 - [`docs/ops-runbook.md`](docs/ops-runbook.md) for health checks, logs and failure triage.
 - [`docs/release-checklist.md`](docs/release-checklist.md) for release pins, CI/HF verification and closeout.
 - [`docs/security.md`](docs/security.md) for auth, secret handling and admin boundaries.
@@ -48,11 +48,17 @@ Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 
 ```text
 Pattern: A - HFS Port Repository
-Runtime mode: source-fetch
+HFS v2 manifest: sovereignty=port, lane=source, version_source=commit
 Space root: repo root
-Source of truth: pinned upstream QwenPaw source commit plus checksum-matched console artifact
+Source of truth: Dockerfile's fixed upstream QwenPaw commit and matching console bundle pins
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 ```
+
+`hfs-dev.toml` is a semantic HFS v2 registry: it records the project, Space, source lane,
+version-source choice, and environment-key ownership only. The Dockerfile,
+`scripts/check-qwenpaw-pins.py`, `scripts/build-console-bundle.sh`, and the manual bundle
+workflow are the evidence for immutable pins and the matching console bundle. That bundle is
+a companion build product for the source lane, not an `artifact` lane delivery.
 
 Do **not** move the Space implementation to `cloud/hfs/`. This repository root is the Hugging Face Space root.
 
@@ -139,11 +145,15 @@ DISCORD_BOT_TOKEN=<optional>
 
 ## Maintainer Quick Start
 
-Create a local ledger and fill only local/private values there:
+Create the local HFS value ledger and fill values only in the ignored copy:
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 ```
+
+`.env` is the local value source for HFS control, Space Variables, and Space Secrets.
+`.env.local` remains ignored only as a compatibility file for local Docker/run workflows; it
+is not the canonical HFS ledger.
 
 At minimum, set:
 
@@ -162,7 +172,7 @@ QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
 QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
 ```
 
-Do not commit `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
+Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
 ## Build
 
@@ -188,7 +198,7 @@ docker build \
   .
 ```
 
-The default build fetches immutable upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, validates that `src/qwenpaw/__version__.py` reports `2.0.1`, verifies and extracts the console artifact built from that exact commit, and installs QwenPaw from the fetched source tree. The console artifact is built in GitHub Actions because the QwenPaw 2.0.1 local Monaco bundle exceeds the Hugging Face build worker memory limit. Release validation checks both the source pin and downloaded artifact; `--require-upstream-main` additionally requires the pin to equal live upstream `main`.
+The default build fetches immutable upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, validates that `src/qwenpaw/__version__.py` reports `2.0.1`, verifies and extracts the console bundle built from that exact commit, and installs QwenPaw from the fetched source tree. The console bundle is built in GitHub Actions because the QwenPaw 2.0.1 local Monaco bundle exceeds the Hugging Face build worker memory limit. It remains a checksum-matched companion to the source build, not an artifact-lane application delivery. Release validation checks both the source pin and downloaded bundle; `--require-upstream-main` additionally requires the pin to equal live upstream `main`.
 
 ## Local Run
 
@@ -278,7 +288,7 @@ bash scripts/static-check.sh
 bash scripts/validate-hfs-contract.sh
 ```
 
-The static gate checks repository shape and Python/shell syntax only. It does not replace Docker build, Hugging Face runtime takeover or live endpoint smoke.
+The static gate checks repository shape and Python/shell syntax only. It does not replace Docker build, remote release publication, Hugging Face runtime takeover, or live endpoint smoke. Remote publication and Space takeover remain separate, explicitly requested release gates.
 
 For a running local container, also verify the default admin boundary:
 
@@ -290,7 +300,7 @@ For a deployed Space, run:
 
 ```bash
 set -a
-. ./.env.local
+. ./.env
 set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```

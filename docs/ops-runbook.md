@@ -32,11 +32,11 @@ Browser access can use `/_ops/?token=<OPS_TOKEN>`. A valid query token is exchan
 
 ## Standard Triage
 
-Load local smoke values:
+Load local smoke values from the canonical `.env` ledger:
 
 ```bash
 set -a
-. ./.env.local
+. ./.env
 set +a
 ```
 

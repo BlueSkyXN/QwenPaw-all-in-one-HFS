@@ -1,6 +1,6 @@
 standard = "2.0"
 project = "qwenpaw-all-in-one-hfs"
-space = "BlueSkyXN/QwenPaw-all-in-one-HFS"
+space = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
 sovereignty = "port"
 lane = "source"
 version_source = "commit"

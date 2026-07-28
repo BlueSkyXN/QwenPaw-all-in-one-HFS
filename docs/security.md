@@ -16,7 +16,7 @@ Set `QWENPAW_AUTH_ENABLED=true` for exposed Spaces. On a fresh Storage Bucket mo
 at `/data`, the app will create the first admin account through the browser. Treat that
 username/password as a real deployment credential:
 
-- Keep it in local `.env.local` or a password manager, not in git.
+- Keep it in the local `.env` ledger or a password manager, not in git.
 - Do not place it in screenshots, PR descriptions, issue comments or public logs.
 - If the `Create Account` screen reappears unexpectedly, confirm the `/data` volume with
   `hf spaces volumes list` before creating another account.
