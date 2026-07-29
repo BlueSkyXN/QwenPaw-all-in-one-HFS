@@ -24,6 +24,11 @@ local_only = [
 # Values are configured as Hugging Face Space Secrets.
 secrets = [
   "OPS_TOKEN",
+]
+
+# Values are optional Hugging Face Space Secrets. Non-empty local values are synced;
+# empty values leave any existing remote Secret unchanged.
+optional_secrets = [
   "ADMIN_TOKEN",
   "ADMIN_CSRF_TOKEN",
   "DASHSCOPE_API_KEY",

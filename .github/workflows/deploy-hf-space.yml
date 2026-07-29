@@ -1,0 +1,205 @@
+name: deploy-hf-space-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Exact 40-character GitHub main commit to export and upload
+        required: true
+        type: string
+      confirm_upload:
+        description: Type PUBLISH_CANDIDATE to authorize the candidate repository write
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qwenpaw-hfs-candidate-deploy
+  cancel-in-progress: false
+
+env:
+  CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate
+  HF_CLI_VERSION: "1.5.0"
+
+jobs:
+  deploy-candidate:
+    runs-on: ubuntu-24.04
+    environment: hfs-candidate
+    steps:
+      - name: Check out the requested immutable commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+
+      - name: Authorize an exact GitHub main candidate
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+          CONFIRM_UPLOAD: ${{ inputs.confirm_upload }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CONFIRM_UPLOAD" == "PUBLISH_CANDIDATE" ]]
+          [[ "$GITHUB_REF" == "refs/heads/main" ]]
+          [[ "$GITHUB_SHA" == "$SOURCE_REF" ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_REF" ]]
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          [[ "$(git rev-parse origin/main)" == "$SOURCE_REF" ]]
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]]
+
+      - name: Run the no-secret repository gate
+        shell: bash
+        run: bash scripts/static-check.sh
+
+      - name: Export and verify the candidate-only Space bundle
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/export_space_bundle.py export \
+            --source-commit "$SOURCE_REF" \
+            --manifest hfs-dev.candidate.toml \
+            --output "$RUNNER_TEMP/qwenpaw-candidate-bundle"
+          python3 scripts/export_space_bundle.py verify \
+            --bundle "$RUNNER_TEMP/qwenpaw-candidate-bundle"
+
+      - name: Install the pinned Hugging Face CLI
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install --disable-pip-version-check "huggingface_hub==${HF_CLI_VERSION}"
+          command -v hf >/dev/null
+
+      - name: Require an existing private candidate with no path outside the allowlist
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "${HF_TOKEN:-}" || { echo "HF_TOKEN environment Secret is required." >&2; exit 1; }
+          python3 scripts/export_space_bundle.py paths > "$RUNNER_TEMP/qwenpaw-candidate-paths"
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          from huggingface_hub import HfApi
+
+          space = os.environ["CANDIDATE_SPACE"]
+          token = os.environ["HF_TOKEN"]
+          expected = set(Path(os.environ["RUNNER_TEMP"], "qwenpaw-candidate-paths").read_text().splitlines())
+          api = HfApi(token=token)
+          try:
+              info = api.space_info(space, revision="main", token=token)
+              actual = set(
+                  api.list_repo_files(space, revision="main", repo_type="space", token=token)
+              )
+          except Exception as exc:
+              raise SystemExit(
+                  f"Candidate Space preflight failed without exposing response details: {type(exc).__name__}"
+              ) from None
+          if info.private is not True:
+              raise SystemExit("Candidate Space must already exist with private=true.")
+          if actual - expected:
+              raise SystemExit(
+                  "Candidate Space contains a path outside the verified bundle allowlist; "
+                  "this workflow never deletes remote files."
+              )
+          print(f"Private candidate preflight passed with {len(actual)} allowlisted remote paths.")
+          PY
+
+      - name: Reconfirm exact GitHub main immediately before upload
+        env:
+          SOURCE_REF: ${{ inputs.source_ref }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          [[ "$GITHUB_SHA" == "$SOURCE_REF" ]]
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_REF" ]]
+          [[ "$(git rev-parse origin/main)" == "$SOURCE_REF" ]]
+          [[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]]
+
+      - name: Upload only the verified candidate bundle
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          hf upload \
+            "$CANDIDATE_SPACE" \
+            "$RUNNER_TEMP/qwenpaw-candidate-bundle" \
+            . \
+            --repo-type space \
+            --revision main \
+            --commit-message "Deploy verified GitHub main candidate ${SOURCE_REF}"
+
+      - name: Read back and verify the complete candidate repository
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bundle="$RUNNER_TEMP/qwenpaw-candidate-bundle"
+          readback="$RUNNER_TEMP/qwenpaw-candidate-readback"
+          python3 scripts/export_space_bundle.py paths > "$RUNNER_TEMP/qwenpaw-candidate-paths"
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import os
+          from pathlib import Path
+
+          from huggingface_hub import HfApi
+
+          space = os.environ["CANDIDATE_SPACE"]
+          token = os.environ["HF_TOKEN"]
+          expected = set(Path(os.environ["RUNNER_TEMP"], "qwenpaw-candidate-paths").read_text().splitlines())
+          api = HfApi(token=token)
+          try:
+              info = api.space_info(space, revision="main", token=token)
+              actual = set(
+                  api.list_repo_files(space, revision="main", repo_type="space", token=token)
+              )
+          except Exception as exc:
+              raise SystemExit(
+                  f"Candidate Space readback failed without exposing response details: {type(exc).__name__}"
+              ) from None
+          if info.private is not True:
+              raise SystemExit("Candidate Space is no longer private.")
+          if actual != expected:
+              raise SystemExit("Candidate repository path readback does not exactly match the verified bundle.")
+          print(f"Candidate repository path readback passed for {len(actual)} files.")
+          PY
+          if ! hf download "$CANDIDATE_SPACE" \
+            --repo-type space \
+            --revision main \
+            --local-dir "$readback" >/dev/null; then
+            echo "Unable to download the candidate repository for complete readback." >&2
+            exit 1
+          fi
+          READBACK="$readback" python3 - <<'PY'
+          import os
+          import shutil
+          from pathlib import Path
+
+          shutil.rmtree(Path(os.environ["READBACK"], ".cache"), ignore_errors=True)
+          PY
+          python3 scripts/export_space_bundle.py verify --bundle "$readback"
+          cmp "$bundle/BUILD_SOURCE.json" "$readback/BUILD_SOURCE.json"
+          cmp "$bundle/SHA256SUMS" "$readback/SHA256SUMS"
+
+      - name: Record the remaining release gates
+        shell: bash
+        run: |
+          cat <<'EOF'
+          Candidate repository upload and complete bundle readback succeeded.
+          This workflow does not change Space Secrets, Variables, volumes, visibility,
+          or lifecycle state; it does not restart the Space. Repository upload is not
+          runtime takeover, live smoke, persistence, restart, backup, or restore proof.
+          EOF

@@ -63,6 +63,7 @@ require_file Dockerfile
 require_file hfs-dev.toml
 require_file hfs-dev.candidate.toml
 require_file .env.example
+require_file .gitattributes
 require_file .gitignore
 require_file AGENTS.md
 require_path docker
@@ -77,6 +78,9 @@ require_file scripts/admin-smoke.sh
 require_file scripts/check-qwenpaw-pins.py
 require_file scripts/hf-space-smoke.sh
 require_file scripts/hf_space_sync.py
+require_file scripts/export_space_bundle.py
+require_file scripts/test_release_tools.py
+require_file .github/workflows/deploy-hf-space.yml
 require_file docs/hfs-alignment.md
 
 python3 - "$repo_root" <<'PY_VALIDATE_HFS'
@@ -117,6 +121,8 @@ expected_lists = {
     },
     "secrets": {
         "OPS_TOKEN",
+    },
+    "optional_secrets": {
         "ADMIN_TOKEN",
         "ADMIN_CSRF_TOKEN",
         "DASHSCOPE_API_KEY",
@@ -182,10 +188,12 @@ for field, expected in expected_lists.items():
         failures.append(f"hfs-dev.toml {field} classification mismatch: {'; '.join(details)}")
     seen_categories[field] = actual
 
-for left, right in (("local_only", "secrets"), ("local_only", "variables"), ("secrets", "variables")):
-    overlap = sorted(seen_categories.get(left, set()) & seen_categories.get(right, set()))
-    if overlap:
-        failures.append(f"hfs-dev.toml {left} and {right} must be mutually exclusive: {overlap}")
+category_names = list(expected_lists)
+for index, left in enumerate(category_names):
+    for right in category_names[index + 1 :]:
+        overlap = sorted(seen_categories.get(left, set()) & seen_categories.get(right, set()))
+        if overlap:
+            failures.append(f"hfs-dev.toml {left} and {right} must be mutually exclusive: {overlap}")
 
 if token_literal.search(raw):
     failures.append("hfs-dev.toml must register environment key names only, not token literals")
@@ -239,6 +247,140 @@ for key in sorted(set(production) | set(candidate)):
     if key != "space" and production.get(key) != candidate.get(key):
         raise SystemExit(f"candidate manifest differs from production at {key}")
 PY_VALIDATE_PROFILE
+
+python3 - "$repo_root" <<'PY_VALIDATE_CANDIDATE_RELEASE'
+from __future__ import annotations
+
+import re
+import runpy
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+failures: list[str] = []
+expected_space = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
+expected_paths = {
+    ".dockerignore",
+    ".gitattributes",
+    "BUILD_SOURCE.json",
+    "Dockerfile",
+    "LICENSE",
+    "README.md",
+    "SHA256SUMS",
+    "hfs-dev.toml",
+    "docker/admin_service.py",
+    "docker/entrypoint.sh",
+    "docker/healthcheck.sh",
+    "docker/nginx.conf",
+    "docker/ops_service.py",
+    "docker/prepare_runtime_config.py",
+    "docker/qwenpaw.env.runtime",
+    "docker/supervisord.conf",
+}
+
+if (root / ".gitattributes").read_text(encoding="utf-8") != "* text=auto eol=lf\n":
+    failures.append(".gitattributes must contain only the candidate bundle LF text contract")
+
+namespace = runpy.run_path(str(root / "scripts" / "export_space_bundle.py"))
+if namespace.get("CANDIDATE_SPACE") != expected_space:
+    failures.append("candidate exporter must fix the candidate Space id")
+if set(namespace.get("BUNDLE_PATHS", ())) != expected_paths:
+    failures.append("candidate exporter final path allowlist does not match the reviewed wrapper boundary")
+source_to_bundle = namespace.get("SOURCE_TO_BUNDLE", {})
+if source_to_bundle.get("hfs-dev.candidate.toml") != "hfs-dev.toml":
+    failures.append("candidate exporter must normalize hfs-dev.candidate.toml to hfs-dev.toml")
+if "hfs-dev.candidate.toml" in expected_paths:
+    failures.append("candidate profile name must not leak into the exported Space root")
+
+formal_samples = {
+    'space = "BlueSkyXN/QwenPaw-all-in-one-HFS"',
+    "https://huggingface.co/spaces/BlueSkyXN/QwenPaw-all-in-one-HFS",
+    "https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space",
+    "HF_SPACE_ID=BlueSkyXN/QwenPaw-all-in-one-HFS",
+}
+patterns = namespace.get("FORMAL_TARGET_PATTERNS", ())
+for sample in formal_samples:
+    if not any(pattern.search(sample) for pattern in patterns):
+        failures.append(f"candidate exporter lacks a production-target leak guard for {sample}")
+candidate_samples = {
+    f'space = "{expected_space}"',
+    f"https://huggingface.co/spaces/{expected_space}",
+    "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space",
+    f"HF_SPACE_ID={expected_space}",
+    "https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS",
+}
+for sample in candidate_samples:
+    if any(pattern.search(sample) for pattern in patterns):
+        failures.append(f"production-target leak guard incorrectly rejects an allowed candidate/source value: {sample}")
+
+workflow = (root / ".github" / "workflows" / "deploy-hf-space.yml").read_text(encoding="utf-8")
+required_workflow_markers = {
+    "workflow_dispatch:": "candidate deploy must be manually dispatched",
+    "source_ref:": "candidate deploy must require source_ref",
+    "confirm_upload:": "candidate deploy must require explicit upload confirmation",
+    "PUBLISH_CANDIDATE": "candidate deploy must use the reviewed confirmation phrase",
+    "contents: read": "candidate deploy must keep GitHub permissions read-only",
+    "environment: hfs-candidate": "candidate deploy must use the hfs-candidate environment",
+    f"CANDIDATE_SPACE: {expected_space}": "candidate deploy must fix the target Space",
+    "bash scripts/static-check.sh": "candidate deploy must run the repository static gate",
+    "export_space_bundle.py export": "candidate deploy must export an allowlisted bundle",
+    "--manifest hfs-dev.candidate.toml": "candidate deploy must select the candidate profile",
+    "export_space_bundle.py verify": "candidate deploy must verify export and readback",
+    "origin/main": "candidate deploy must bind source_ref to GitHub main",
+    "GITHUB_SHA": "candidate deploy must bind source_ref to the dispatched GitHub SHA",
+    "info.private is not True": "candidate deploy must fail unless the Space is private",
+    "actual - expected": "candidate preflight must reject remote paths outside the allowlist",
+    "actual != expected": "candidate readback must require the exact final path set",
+    "hf upload": "candidate deploy must upload only after verification",
+    "hf download": "candidate deploy must perform complete repository readback",
+    "cmp \"$bundle/SHA256SUMS\"": "candidate deploy must compare the checksum manifest after readback",
+}
+for marker, message in required_workflow_markers.items():
+    if marker not in workflow:
+        failures.append(message)
+if re.search(r"(?m)^\s{2}(?:push|pull_request|schedule):", workflow):
+    failures.append("candidate deploy must not have an automatic trigger")
+hf_token_bindings = re.findall(r"(?m)^\s*HF_TOKEN:\s*(.+?)\s*$", workflow)
+if not hf_token_bindings or any(binding != "${{ secrets.HF_TOKEN }}" for binding in hf_token_bindings):
+    failures.append("candidate deploy HF_TOKEN must come only from the GitHub environment Secret")
+for forbidden in (
+    "hf repo delete",
+    "hf repos delete",
+    "delete_repo(",
+    "hf spaces restart",
+    "restart_space(",
+    "hf spaces variables set",
+    "hf spaces secrets set",
+    "hf spaces volumes set",
+):
+    if forbidden in workflow:
+        failures.append(f"candidate deploy must not perform forbidden remote mutation: {forbidden}")
+
+sync_source = (root / "scripts" / "hf_space_sync.py").read_text(encoding="utf-8")
+test_source = (root / "scripts" / "test_release_tools.py").read_text(encoding="utf-8")
+for marker in (
+    'string_list(manifest, "optional_secrets")',
+    "configured_secret_names",
+    "registered_secrets = secrets | optional_secrets",
+    "remote_secrets - registered_secrets",
+):
+    if marker not in sync_source:
+        failures.append(f"Settings sync lacks optional Secret contract marker: {marker}")
+for marker in (
+    "test_empty_optional_secret_is_accepted",
+    "test_missing_required_secret_is_rejected",
+    "test_nonempty_optional_placeholder_is_rejected",
+    "test_configured_optional_secret_is_pushed_and_required_on_readback",
+    "test_prune_retains_registered_optional_secret_when_local_value_is_empty",
+):
+    if marker not in test_source:
+        failures.append(f"release tools tests lack required optional Secret case: {marker}")
+
+if failures:
+    for failure in failures:
+        print(f"FAIL hfs-contract: {failure}", file=sys.stderr)
+    raise SystemExit(1)
+PY_VALIDATE_CANDIDATE_RELEASE
 
 sdk=$(frontmatter_value sdk)
 app_port=$(frontmatter_value app_port)

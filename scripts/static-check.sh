@@ -22,7 +22,7 @@ bash -n scripts/hf-space-smoke.sh
 bash -n scripts/local-build.sh
 bash -n scripts/local-run.sh
 
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_runtime_helpers.py'
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'
 
 # compile() validates Python syntax without creating persistent .pyc files.
 python3 - \
@@ -30,6 +30,9 @@ python3 - \
   docker/ops_service.py \
   docker/admin_service.py \
   scripts/check-qwenpaw-pins.py \
+  scripts/export_space_bundle.py \
+  scripts/hf_space_sync.py \
+  scripts/test_release_tools.py \
   scripts/test_runtime_helpers.py <<'PY_COMPILE'
 from __future__ import annotations
 

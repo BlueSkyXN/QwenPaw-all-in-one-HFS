@@ -16,6 +16,23 @@ For release pin changes, also run the networked check:
 python3 scripts/check-qwenpaw-pins.py --require-upstream-main
 ```
 
+For a candidate repository release, first commit the reviewed change and verify the exact
+clean commit locally without contacting Hugging Face:
+
+```bash
+source_ref=$(git rev-parse HEAD)
+bundle_dir=$(mktemp -d)
+test -z "$(git status --porcelain=v1 --untracked-files=all)"
+python3 scripts/export_space_bundle.py export \
+  --source-commit "$source_ref" \
+  --manifest hfs-dev.candidate.toml \
+  --output "$bundle_dir"
+python3 scripts/export_space_bundle.py verify --bundle "$bundle_dir"
+```
+
+Record the complete `BUILD_SOURCE.json` and `SHA256SUMS` readback as repository evidence;
+do not treat either as runtime evidence.
+
 Before upgrading across an upstream release that migrates persisted configuration, copy
 the working directory to a private path in the same Storage Bucket. Keep the bucket ID
 and backup path in the local deployment ledger, not in Git:
@@ -114,7 +131,40 @@ Repeat the readback after a release rebuild. A stable config object plus
 `has_users=true` after restart/rebuild is stronger persistence evidence than a merely
 writable `/data` directory.
 
+## Candidate GitHub Actions Gate
+
+The manual `deploy-hf-space-candidate` workflow is the only reviewed candidate repository
+upload path. Before dispatch:
+
+- Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
+- Confirm the fixed candidate `BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate` already exists and is private.
+- Confirm the `hfs-candidate` GitHub environment exposes only the required deployment Secret name `HF_TOKEN`; never print its value.
+- Review candidate Settings separately with `hf_space_sync.py diff`; repo upload does not sync Settings.
+- Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_CANDIDATE`.
+
+The workflow must fail closed if `source_ref`, `GITHUB_SHA`, or current `origin/main` differ;
+if static checks or bundle verification fail; if the Space is not private; or if the remote
+repository contains a path outside the bundle allowlist. It never deletes remote files.
+
+After a green workflow, record these as separate states:
+
+```text
+GitHub main SHA == exported BUILD_SOURCE.wrapper_source_commit
+candidate remote path set == exporter path allowlist
+candidate remote SHA256SUMS == local verified SHA256SUMS
+complete downloaded bundle passes exporter verify
+runtime takeover: NOT PROVEN by this workflow
+live/auth smoke: NOT RUN by this workflow
+persistence/restart/backup/restore: NOT RUN by this workflow
+```
+
+Only after separately approved runtime checks may the candidate be described as deployed
+and accepted. A successful repository upload/readback alone is a publish result.
+
 ## GitHub/Hugging Face Closeout
+
+This direct two-remote closeout applies to canonical production. Do not push the GitHub root
+directly to the candidate Space.
 
 Before pushing:
 
