@@ -453,9 +453,9 @@ for marker in (
         failures.append(f"release tools tests lack required profile contract case: {marker}")
 for marker in (
     'string_list(manifest, "optional_secrets")',
-    "configured_secret_names",
-    "registered_secrets = secrets | optional_secrets",
-    "remote_secrets - registered_secrets",
+    "configured_optional_secrets",
+    "managed_secrets = secrets | optional_secrets",
+    "remote_secrets - managed_secrets",
 ):
     if marker not in sync_source:
         failures.append(f"Settings sync lacks optional Secret contract marker: {marker}")

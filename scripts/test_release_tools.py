@@ -378,7 +378,10 @@ class OptionalSecretTests(unittest.TestCase):
         self.assertEqual(required, {"OPS_TOKEN"})
         self.assertEqual(optional, {"OPENAI_API_KEY"})
         self.assertEqual(variables, {"PORT"})
-        self.assertEqual(sync.configured_secret_names(required, optional, env), {"OPS_TOKEN"})
+        self.assertEqual(
+            required | sync.configured_optional_secrets(env, optional),
+            {"OPS_TOKEN"},
+        )
 
     def test_missing_required_secret_is_rejected(self) -> None:
         with self.assertRaisesRegex(sync.SyncError, "缺少已登记值"):
