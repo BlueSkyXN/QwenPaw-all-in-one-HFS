@@ -22,7 +22,7 @@ concurrency:
 env:
   CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate
   HF_CLI_VERSION: "1.5.0"
-  HF_CLI_CLICK_VERSION: "8.3.1"
+  HF_CLI_CLICK_VERSION: "8.3.3"
 
 jobs:
   deploy-candidate:
