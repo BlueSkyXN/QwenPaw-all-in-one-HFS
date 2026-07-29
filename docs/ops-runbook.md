@@ -89,10 +89,15 @@ supervisord
 Check:
 
 ```bash
-hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+python3 -m huggingface_hub.cli.hf spaces info \
+  BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private
 ```
 
-Compare `sha` and `runtime.raw.sha` with local `git rev-parse HEAD`. The Space repo can update before runtime takeover. Wait for `runtime.stage=RUNNING` and `runtime.raw.sha == HEAD`.
+For fixed-profile publication, compare the downloaded `BUILD_SOURCE.wrapper_source_commit`
+with the authorized GitHub SHA, then compare the Hugging Face repo `sha` with
+`runtime.raw.sha`. The Space repo can update before runtime takeover. Wait for
+`runtime.stage=RUNNING` and `runtime.raw.sha == sha`; the Hugging Face commit is distinct from
+the GitHub wrapper commit recorded in provenance.
 
 ### `/healthz` returns 503
 
@@ -127,7 +132,7 @@ The Storage Bucket volume may be missing or mounted at the wrong path. First rea
 the Space volume configuration:
 
 ```bash
-hf spaces volumes list "$HF_SPACE_ID" --json
+python3 -m huggingface_hub.cli.hf spaces info "$HF_SPACE_ID" --expand runtime
 ```
 
 The expected entry has `type=bucket`, `mount_path=/data` and `read_only=false`. An empty
@@ -150,7 +155,7 @@ Inspect `xvfb.err.log` and confirm Chromium exists at `/usr/bin/chromium`.
 ### First admin account page appears again
 
 This usually means the Space is using a fresh, detached or lost `/data` volume. Confirm
-the Storage Bucket mount with `hf spaces volumes list`, then check whether
+the Storage Bucket mount with the pinned module CLI runtime readback, then check whether
 `/data/qwenpaw/working/config.json` exists. Do not create a new account unless the
 deployment is intentionally fresh.
 

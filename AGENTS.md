@@ -47,7 +47,7 @@ Space package surface.
 | `.dockerignore` | Docker build context boundary and secret/local exclusions | No | Changing what can enter the Space build context |
 | `.gitignore` | Git working tree exclusions for local secrets, runtime data, caches, and ignored mirrors | No | Changing local/private file handling |
 | `.env.example` | Non-secret example runtime values only | No | Adding or renaming public configuration keys |
-| `.github/` | GitHub Actions for static validation, console build, and manual candidate repository deploy | Yes | Any workflow, CI trigger, environment, Secret binding, or remote-write change |
+| `.github/` | GitHub Actions for static validation, console build, and fixed-profile candidate/formal deploys | Yes | Any workflow, CI trigger, environment, Secret binding, or remote-write change |
 | `docker/` | Runtime glue copied into the image: entrypoint, Nginx, Supervisor, healthcheck, ops/admin services, runtime env template | Yes | Any runtime behavior, routing, auth boundary, logs, persistence, process supervision, ops/admin, or healthcheck change |
 | `scripts/` | Maintainer validation, local build/run, and smoke scripts | Yes | Any script, release gate, smoke behavior, Docker helper, or HFS contract validation change |
 | `docs/` | Operator documentation: architecture, config, deployment, ops, release, security, HFS alignment | No | Documentation-only edits; keep facts aligned with root commands, `Dockerfile`, `hfs-dev.toml`, `docker/`, and `scripts/` |
@@ -79,10 +79,10 @@ additional commands without checking real files first.
 | `bash scripts/validate-hfs-contract.sh` | Validate Pattern A repo shape, `hfs-dev.toml`, Space metadata, release pins, routing/security invariants, ignored secret patterns, and smoke coverage. | repo | No Docker or network required. Requires `python3` with `tomllib`, plus standard shell tools. |
 | `python3 scripts/check-qwenpaw-pins.py` | Networked release check that fetches Dockerfile `QWENPAW_SOURCE_REF` from upstream QwenPaw and verifies the expected source version. Add `--require-upstream-main` for latest-main releases. | release pins | Requires network, `git`, and access to GitHub. Not part of the default static gate. |
 | `bash scripts/build-console-bundle.sh <repo> <sha> <version> <output-dir>` | Build and checksum the console for an immutable upstream source commit. The manual `build-console-bundle` workflow uses this when the HFS builder cannot compile the frontend within its memory limit. | release artifact | Requires network, `git`, Node.js/npm, Python 3, and enough build memory. It creates local output only and does not publish. |
-| `python3 scripts/export_space_bundle.py export --source-commit <sha> --manifest hfs-dev.candidate.toml --output <empty-dir>` | Export the exact allowlisted candidate Space bundle from a clean immutable checkout, normalize the candidate manifest, and generate provenance/checksums. | candidate release | Local-only and standard-library only. It performs no network or remote write. |
-| `python3 scripts/export_space_bundle.py verify --bundle <dir>` | Verify the exact candidate path set, target normalization, provenance, and complete SHA-256 coverage. | candidate release | Local-only and standard-library only. Safe for exported and downloaded bundles. |
-| `python3 scripts/export_space_bundle.py paths` | Print the exact final candidate bundle path allowlist used by CI remote preflight/readback. | candidate release | Read-only and credential-free. |
-| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'` | Run runtime-helper plus candidate exporter/Settings contract unit tests. | repo | Requires Git for a temporary synthetic repository; no Docker, network, Hugging Face package, or credentials required. |
+| `python3 scripts/export_hfs_space_bundle.py export --source-commit <sha> --profile <candidate\|formal> --output <empty-dir>` | Export an exact allowlisted candidate or formal Space bundle from a clean immutable checkout and generate provenance/checksums. Profile names fix the manifest and target Space; arbitrary owner/repo input is not accepted. | release bundle | Local-only and standard-library only. It performs no network or remote write. |
+| `python3 scripts/export_hfs_space_bundle.py verify --profile <candidate\|formal> --bundle <dir>` | Verify the exact profile path set, fixed target, provenance, and complete SHA-256 coverage. | release bundle | Local-only and standard-library only. Safe for exported and downloaded bundles. |
+| `python3 scripts/export_hfs_space_bundle.py paths --profile <candidate\|formal>` | Print the exact final bundle path allowlist used by CI remote preflight/readback. | release bundle | Read-only and credential-free. |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'` | Run runtime-helper plus fixed-profile exporter/Settings contract unit tests. | repo | Requires Git for a temporary synthetic repository; no Docker, network, Hugging Face package, or credentials required. |
 | `git diff --check` | Whitespace/error check before publishing changes. | repo | Read-only Git check. |
 | `bash -n docker/entrypoint.sh` | Targeted shell syntax check for runtime entrypoint edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
 | `bash -n docker/healthcheck.sh` | Targeted shell syntax check for container healthcheck edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
@@ -96,7 +96,7 @@ additional commands without checking real files first.
 | `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` or `QWENPAW_OPS_TOKEN` is set. |
 | `ADMIN_EXPECTED_ENABLED=false bash scripts/admin-smoke.sh http://127.0.0.1:7860` | Smoke the default disabled admin boundary on a running local container. | repo/runtime | Requires a running container or service at the target URL. Mutating admin actions run only when explicitly enabled by env. |
 | `bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"` | Smoke a deployed Hugging Face Space. | live Space | Requires network, a reachable Space URL, and usually `OPS_TOKEN` from local/private environment. Do not paste real tokens into public logs or commits. |
-| `hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json` | Inspect Hugging Face repo/runtime state during release closeout. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
+| `python3 -m huggingface_hub.cli.hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private` | Inspect Hugging Face repo/runtime state during release closeout with the pinned module CLI. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
 
 ## Global rules
 
@@ -111,6 +111,10 @@ additional commands without checking real files first.
 - Candidate deployment automation may write only the verified repository bundle to the fixed
   existing private candidate after exact-main and confirmation gates. Settings, visibility,
   volumes, lifecycle, runtime smoke, persistence, and cleanup are separate operations.
+- Formal deployment automation may write only the verified `formal` bundle to the fixed
+  existing private canonical Space after exact-main and `hfs-production` confirmation gates.
+  It must complete path/checksum/provenance readback before requesting a factory restart;
+  runtime takeover, live smoke, persistence, backup, and restore remain separate evidence.
 - Keep this repository in Pattern A shape. Do not add `cloud/hfs/README.md` or
   `cloud/hfs/Dockerfile`.
 - Do not vendor upstream QwenPaw source into this repository. The `source-fetch` runtime
@@ -168,8 +172,8 @@ additional commands without checking real files first.
   taken over. Runtime `raw.sha`, runtime `stage`, and endpoint smoke are separate checks.
 - Do not run deployment, push, merge, publish, or permission-changing commands unless the
   user explicitly asks for that operation.
-- Do not add production `hfs-dev.toml`, `.env*`, docs, workflows, `AGENTS.md`, `local/`, or
-  scripts to the candidate Space bundle allowlist.
+- Do not add the unselected manifest, `.env*`, docs, workflows, `AGENTS.md`, `local/`, or
+  scripts to either fixed-profile Space bundle allowlist.
 
 ## Validation
 
@@ -212,12 +216,12 @@ runtime checks were skipped and which static checks passed.
 For release/deployment closeout requested by the user, validate all states separately:
 
 ```text
-local HEAD == origin/main == hf/main
+local HEAD == origin/main == downloaded BUILD_SOURCE.wrapper_source_commit
 GitHub static-check succeeded for HEAD
-Hugging Face repo sha == HEAD
-Hugging Face runtime.raw.sha == HEAD
+formal path/checksum/provenance readback passed
+Hugging Face repo sha == Hugging Face runtime.raw.sha
 Hugging Face runtime.stage == RUNNING
-live smoke passed
+live/authenticated smoke and existing-account persistence passed
 worktree has no uncommitted tracked changes
 ```
 

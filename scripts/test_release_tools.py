@@ -9,11 +9,12 @@ import os
 import subprocess
 import sys
 import tempfile
-import tomllib
 import types
 import unittest
 from pathlib import Path
 from unittest import mock
+
+import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -28,7 +29,12 @@ def load_module(name: str, path: Path):
     return module
 
 
-exporter = load_module("export_space_bundle", ROOT / "scripts" / "export_space_bundle.py")
+exporter = load_module(
+    "export_hfs_space_bundle", ROOT / "scripts" / "export_hfs_space_bundle.py"
+)
+compat_exporter = load_module(
+    "export_space_bundle_compat", ROOT / "scripts" / "export_space_bundle.py"
+)
 
 fake_huggingface_hub = types.ModuleType("huggingface_hub")
 fake_huggingface_utils = types.ModuleType("huggingface_hub.utils")
@@ -60,10 +66,10 @@ class SyntheticBundleRepository:
         self.repo.mkdir()
         self._write_sources()
         self._git("init", "-q")
-        self._git("config", "user.name", "Candidate Test")
-        self._git("config", "user.email", "candidate@example.invalid")
+        self._git("config", "user.name", "Bundle Test")
+        self._git("config", "user.email", "bundle@example.invalid")
         self._git("add", ".")
-        self._git("commit", "-qm", "synthetic candidate")
+        self._git("commit", "-qm", "synthetic bundle source")
         self.commit = self._git("rev-parse", "HEAD").strip()
 
     def cleanup(self) -> None:
@@ -116,45 +122,45 @@ class SyntheticBundleRepository:
             "\n".join(
                 [
                     f"GitHub: {exporter.WRAPPER_REPOSITORY}",
-                    f"Hugging Face Space: {exporter.PRODUCTION_SPACE_URL}",
-                    f"Live app: {exporter.PRODUCTION_LIVE_URL}",
-                    f"HF_SPACE_ID={exporter.PRODUCTION_SPACE}",
+                    f"Hugging Face Space: {exporter.FORMAL_SPACE_URL}",
+                    f"Live app: {exporter.FORMAL_LIVE_URL}",
+                    f"HF_SPACE_ID={exporter.FORMAL_SPACE}",
                     "",
                 ]
             ),
         )
-        self._write(
-            exporter.CANDIDATE_MANIFEST,
-            "\n".join(
-                [
-                    'standard = "2.0"',
-                    'project = "qwenpaw-all-in-one-hfs"',
-                    f'space = "{exporter.CANDIDATE_SPACE}"',
-                    'sovereignty = "port"',
-                    'lane = "source"',
-                    'version_source = "commit"',
-                    'local_only = ["HF_TOKEN"]',
-                    'secrets = ["OPS_TOKEN"]',
-                    'optional_secrets = ["OPENAI_API_KEY"]',
-                    'variables = ["PORT"]',
-                    "",
-                ]
-            ),
-        )
+        for profile in exporter.PROFILES.values():
+            self._write(
+                profile["manifest"],
+                "\n".join(
+                    [
+                        'standard = "2.0"',
+                        'project = "qwenpaw-all-in-one-hfs"',
+                        f'space = "{profile["space"]}"',
+                        'sovereignty = "port"',
+                        'lane = "source"',
+                        'version_source = "commit"',
+                        'local_only = ["HF_TOKEN"]',
+                        'secrets = ["OPS_TOKEN"]',
+                        'optional_secrets = ["OPENAI_API_KEY"]',
+                        'variables = ["PORT"]',
+                        "",
+                    ]
+                ),
+            )
         executable = {
             "docker/admin_service.py",
             "docker/entrypoint.sh",
             "docker/healthcheck.sh",
             "docker/ops_service.py",
         }
-        for source_path in exporter.SOURCE_TO_BUNDLE:
+        for source_path in exporter.COMMON_SOURCE_TO_BUNDLE:
             if source_path in {
                 ".dockerignore",
                 ".gitattributes",
                 "Dockerfile",
                 "LICENSE",
                 "README.md",
-                exporter.CANDIDATE_MANIFEST,
             }:
                 continue
             self._write(
@@ -163,12 +169,12 @@ class SyntheticBundleRepository:
                 0o755 if source_path in executable else 0o644,
             )
 
-    def export(self, name: str = "bundle") -> Path:
-        output = self.root / name
+    def export(self, profile: str = "candidate", name: str | None = None) -> Path:
+        output = self.root / (name or f"{profile}-bundle")
         exporter.export_bundle(
             self.repo,
             self.commit,
-            Path(exporter.CANDIDATE_MANIFEST),
+            profile,
             output,
         )
         return output
@@ -184,13 +190,13 @@ def rewrite_checksums(bundle: Path) -> None:
     (bundle / "SHA256SUMS").write_text("".join(lines), encoding="utf-8")
 
 
-class CandidateBundleTests(unittest.TestCase):
+class ProfileBundleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.synthetic = SyntheticBundleRepository()
         self.addCleanup(self.synthetic.cleanup)
 
     def test_exports_candidate_bundle_with_exact_allowlist_and_checksums(self) -> None:
-        bundle = self.synthetic.export()
+        bundle = self.synthetic.export("candidate")
         actual = {
             path.relative_to(bundle).as_posix()
             for path in bundle.rglob("*")
@@ -210,36 +216,119 @@ class CandidateBundleTests(unittest.TestCase):
         evidence = json.loads((bundle / "BUILD_SOURCE.json").read_text(encoding="utf-8"))
         self.assertEqual(evidence["wrapper_source_commit"], self.synthetic.commit)
         self.assertEqual(evidence["target_space"], exporter.CANDIDATE_SPACE)
-        exporter.verify_bundle(bundle)
+        self.assertEqual(evidence["manifest_profile"], exporter.CANDIDATE_MANIFEST)
+        self.assertEqual(evidence["profile"], "candidate")
+        exporter.verify_bundle(bundle, "candidate")
+
+    def test_exports_formal_bundle_with_fixed_target_and_provenance(self) -> None:
+        bundle = self.synthetic.export("formal")
+        actual = {
+            path.relative_to(bundle).as_posix()
+            for path in bundle.rglob("*")
+            if path.is_file()
+        }
+        self.assertEqual(actual, set(exporter.BUNDLE_PATHS))
+        self.assertNotIn(exporter.CANDIDATE_MANIFEST, actual)
+
+        manifest = tomllib.loads((bundle / "hfs-dev.toml").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["space"], exporter.FORMAL_SPACE)
+        self.assertEqual(manifest["optional_secrets"], ["OPENAI_API_KEY"])
+        readme = (bundle / "README.md").read_text(encoding="utf-8")
+        self.assertIn(exporter.FORMAL_SPACE_URL, readme)
+        self.assertIn(exporter.FORMAL_LIVE_URL, readme)
+        self.assertIn(f"HF_SPACE_ID={exporter.FORMAL_SPACE}", readme)
+
+        evidence = json.loads((bundle / "BUILD_SOURCE.json").read_text(encoding="utf-8"))
+        self.assertEqual(evidence["wrapper_source_commit"], self.synthetic.commit)
+        self.assertEqual(evidence["wrapper_source_repository"], exporter.WRAPPER_REPOSITORY)
+        self.assertEqual(evidence["target_space"], exporter.FORMAL_SPACE)
+        self.assertEqual(evidence["manifest_profile"], exporter.FORMAL_MANIFEST)
+        self.assertEqual(evidence["profile"], "formal")
+        self.assertEqual(evidence["upstream_source_ref"], "1" * 40)
+        exporter.verify_bundle(bundle, "formal")
 
     def test_verifier_rejects_production_space_target_leak(self) -> None:
-        bundle = self.synthetic.export()
+        bundle = self.synthetic.export("candidate")
         with (bundle / "README.md").open("a", encoding="utf-8") as file:
-            file.write(f"HF_SPACE_ID={exporter.PRODUCTION_SPACE}\n")
+            file.write(f"HF_SPACE_ID={exporter.FORMAL_SPACE}\n")
         rewrite_checksums(bundle)
-        with self.assertRaisesRegex(exporter.BundleError, "production Space target"):
-            exporter.verify_bundle(bundle)
+        with self.assertRaisesRegex(exporter.BundleError, "formal Space target"):
+            exporter.verify_bundle(bundle, "candidate")
+
+    def test_verifier_rejects_profile_mismatch(self) -> None:
+        bundle = self.synthetic.export("candidate")
+        with self.assertRaisesRegex(exporter.BundleError, "unexpected space"):
+            exporter.verify_bundle(bundle, "formal")
+
+    def test_formal_verifier_rejects_provenance_target_tampering(self) -> None:
+        bundle = self.synthetic.export("formal")
+        evidence_path = bundle / "BUILD_SOURCE.json"
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        evidence["target_space"] = exporter.CANDIDATE_SPACE
+        evidence_path.write_text(
+            json.dumps(evidence, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        rewrite_checksums(bundle)
+        with self.assertRaisesRegex(exporter.BundleError, "unexpected Space target"):
+            exporter.verify_bundle(bundle, "formal")
 
     def test_verifier_rejects_unexpected_file(self) -> None:
-        bundle = self.synthetic.export()
+        bundle = self.synthetic.export("candidate")
         (bundle / "unexpected.txt").write_text("not allowlisted\n", encoding="utf-8")
         with self.assertRaisesRegex(exporter.BundleError, "path set mismatch"):
-            exporter.verify_bundle(bundle)
+            exporter.verify_bundle(bundle, "candidate")
+
+    def test_verifier_rejects_checksum_tampering(self) -> None:
+        bundle = self.synthetic.export("formal")
+        with (bundle / "README.md").open("a", encoding="utf-8") as file:
+            file.write("tampered\n")
+        with self.assertRaisesRegex(exporter.BundleError, "checksum mismatch"):
+            exporter.verify_bundle(bundle, "formal")
 
     def test_exporter_rejects_dirty_checkout(self) -> None:
         with (self.synthetic.repo / "README.md").open("a", encoding="utf-8") as file:
             file.write("dirty\n")
         with self.assertRaisesRegex(exporter.BundleError, "dirty checkout"):
-            self.synthetic.export()
+            self.synthetic.export("candidate")
 
     def test_exporter_rejects_source_commit_mismatch(self) -> None:
         with self.assertRaisesRegex(exporter.BundleError, "current checkout HEAD"):
             exporter.export_bundle(
                 self.synthetic.repo,
                 "0" * 40,
-                Path(exporter.CANDIDATE_MANIFEST),
+                "formal",
                 self.synthetic.root / "mismatch",
             )
+
+    def test_exporter_rejects_non_allowlisted_profile(self) -> None:
+        with self.assertRaisesRegex(exporter.BundleError, "candidate, formal"):
+            self.synthetic.export("BlueSkyXN/arbitrary")
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            exporter.build_parser().parse_args(
+                ["paths", "--profile", "BlueSkyXN/arbitrary"]
+            )
+
+    def test_candidate_compatibility_cli_rejects_other_manifest(self) -> None:
+        with (
+            contextlib.redirect_stderr(io.StringIO()),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            result = compat_exporter.main(
+                [
+                    "export",
+                    "--source-commit",
+                    self.synthetic.commit,
+                    "--manifest",
+                    exporter.FORMAL_MANIFEST,
+                    "--output",
+                    str(self.synthetic.root / "compat-rejected"),
+                ]
+            )
+        self.assertEqual(result, 1)
 
 
 def write_sync_fixture(root: Path, *, ops_token: str, optional_token: str) -> None:
@@ -289,7 +378,10 @@ class OptionalSecretTests(unittest.TestCase):
         self.assertEqual(required, {"OPS_TOKEN"})
         self.assertEqual(optional, {"OPENAI_API_KEY"})
         self.assertEqual(variables, {"PORT"})
-        self.assertEqual(sync.configured_secret_names(required, optional, env), {"OPS_TOKEN"})
+        self.assertEqual(
+            required | sync.configured_optional_secrets(env, optional),
+            {"OPS_TOKEN"},
+        )
 
     def test_missing_required_secret_is_rejected(self) -> None:
         with self.assertRaisesRegex(sync.SyncError, "缺少已登记值"):

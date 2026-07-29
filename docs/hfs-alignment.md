@@ -63,10 +63,12 @@ Current implementation covers:
 | Reverse-proxy auth | persisted `trusted_proxies` includes only local Nginx; forwarding headers are sanitized |
 | Readiness | `/readyz` follows upstream QwenPaw `/api/healthz`, not TCP alone |
 | Runtime glue | `docker/` |
-| Persistence | `/data/qwenpaw/*`, backed by a read-write Storage Bucket volume at `/data` and verified with `hf spaces volumes list` plus `/_ops/persistence` |
+| Persistence | `/data/qwenpaw/*`, backed by a read-write Storage Bucket volume at `/data` and verified with pinned module-CLI runtime info plus `/_ops/persistence` |
 | Ops | `/_ops` is read-only |
 | Admin | `/_admin` is disabled by default and whitelisted when enabled |
 | Static gate | `scripts/static-check.sh` and `scripts/validate-hfs-contract.sh` |
+| Release bundle | `scripts/export_hfs_space_bundle.py` fixes the `candidate`/`formal` manifests, targets, provenance, checksums, and exact Space-root path set |
+| Canonical deploy | `deploy-hfs-formal.yml` uses protected exact-main publication, full readback, and a post-readback factory restart request |
 | Smoke | `scripts/hf-space-smoke.sh` |
 
 ## Source Fetch Boundary

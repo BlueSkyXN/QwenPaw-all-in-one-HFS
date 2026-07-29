@@ -30,6 +30,7 @@ python3 - \
   docker/ops_service.py \
   docker/admin_service.py \
   scripts/check-qwenpaw-pins.py \
+  scripts/export_hfs_space_bundle.py \
   scripts/export_space_bundle.py \
   scripts/hf_space_sync.py \
   scripts/test_release_tools.py \
