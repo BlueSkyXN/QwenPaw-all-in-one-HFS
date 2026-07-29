@@ -28,6 +28,62 @@ bash scripts/validate-hfs-contract.sh
 git diff --check
 ```
 
+## Candidate Bundle Contract
+
+The candidate Space is fixed at
+`BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`. Do not push this GitHub repository root
+directly to that Space: the root Dockerfile copies `hfs-dev.toml`, whose normal checkout
+profile targets production. Export the reviewed candidate profile into an exact bundle
+instead:
+
+```bash
+source_ref=$(git rev-parse HEAD)
+bundle_dir=$(mktemp -d)
+python3 scripts/export_space_bundle.py export \
+  --source-commit "$source_ref" \
+  --manifest hfs-dev.candidate.toml \
+  --output "$bundle_dir"
+python3 scripts/export_space_bundle.py verify \
+  --bundle "$bundle_dir"
+python3 scripts/export_space_bundle.py paths
+```
+
+The exporter requires a clean checkout whose `HEAD` exactly matches the lowercase
+40-character `source_ref`. Every source input is read from that commit. The exported
+`hfs-dev.toml` comes from `hfs-dev.candidate.toml`; the Space-card Hugging Face links are
+candidate-specific while GitHub source and release-asset URLs remain unchanged.
+`BUILD_SOURCE.json` records wrapper/upstream provenance, and `SHA256SUMS` covers every other
+allowlisted file exactly once. The verifier rejects missing, extra, non-regular, symlinked,
+or production-target files.
+
+The manual GitHub Actions workflow `.github/workflows/deploy-hf-space.yml` adds the remote
+write gate. Dispatch it from GitHub `main` with:
+
+```text
+source_ref=<exact current GitHub main SHA>
+confirm_upload=PUBLISH_CANDIDATE
+```
+
+The `hfs-candidate` GitHub environment must provide `HF_TOKEN`. Before uploading, the
+workflow requires `source_ref == GITHUB_SHA == origin/main`, runs `static-check`, verifies
+the bundle, confirms that the candidate Space already exists with `private=true`, and
+refuses any remote path outside the bundle allowlist. It uploads without deletion, then
+reads back the exact path set and checksums. It does not create a Space, change visibility,
+sync Secrets/Variables, modify volumes, delete files, restart the Space, or run live smoke.
+
+Sync candidate Settings separately from the ignored local ledger when that operation is
+explicitly approved:
+
+```bash
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+```
+
+An empty registered optional Secret is not pushed, does not count as missing, and is not
+deleted by `--prune --yes`. A configured optional Secret is subject to the same placeholder,
+seed-scan, push, and name-readback safeguards as `OPS_TOKEN`.
+
 ## Local Build
 
 Local Docker build is optional for development. For this repository's normal maintenance workflow, heavy build/runtime verification can be performed by GitHub Actions and Hugging Face runtime instead.
@@ -97,12 +153,14 @@ Record the bucket ID only in local `.env` or another private deployment ledger:
 HF_STORAGE_BUCKET=<namespace>/<bucket-name>
 ```
 
-## Hugging Face Space
+## Production Hugging Face Space
 
-This documentation describes a later release gate. A local semantic-manifest change does not publish to a remote, update Space Settings, or cause Space takeover.
+This section describes the canonical production Space and its separately approved manual
+release gate. It is not the candidate workflow above. A local semantic-manifest change does
+not publish to a remote, update Space Settings, or cause Space takeover.
 
 1. Create a Docker Space.
-2. Push this repository root to the Space repository.
+2. Push this repository root only to the canonical production Space repository.
 3. Attach a private Storage Bucket read-write at `/data` if runtime data must survive
    restarts/rebuilds.
 4. Set Variables/Secrets from `docs/configuration.md`.
@@ -111,7 +169,11 @@ This documentation describes a later release gate. A local semantic-manifest cha
 
 GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Execute them only as an explicitly approved release operation; treat the Space as available only after live smoke passes.
 
-## Push Flow
+## Production Manual Push Flow
+
+Do not use this direct-root flow for the candidate Space. Candidate publication must use the
+verified exporter/workflow so `hfs-dev.candidate.toml` is normalized to the image's
+`hfs-dev.toml`.
 
 Expected remotes:
 

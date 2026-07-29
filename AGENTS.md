@@ -42,11 +42,12 @@ Space package surface.
 | `AGENTS.md` | Startup router, directory map, command index, repository-wide boundaries | No | Update when repository structure, commands, or local cards change |
 | `README.md` | Hugging Face Space card plus human maintainer overview | No | Updating Space metadata, public quick start, or documented runtime shape |
 | `Dockerfile` | Root Docker Space build, upstream source fetch/install, release pin environment | No | Changing base image, source pins, OS packages, build args, ports, copied files, healthcheck, user, or entrypoint |
-| `hfs-dev.toml` | Machine-readable HFS contract and release pin metadata | No | Changing HFS pattern, runtime mode, required files, ports, health endpoints, or release pins |
+| `hfs-dev.toml` | Production HFS semantic contract and required/optional Settings ownership | No | Changing HFS pattern, runtime mode, Settings categories, ports, or target Space |
+| `hfs-dev.candidate.toml` | Candidate HFS profile; must differ from production only by fixed Space id | No | Changing candidate target or Settings ownership |
 | `.dockerignore` | Docker build context boundary and secret/local exclusions | No | Changing what can enter the Space build context |
 | `.gitignore` | Git working tree exclusions for local secrets, runtime data, caches, and ignored mirrors | No | Changing local/private file handling |
 | `.env.example` | Non-secret example runtime values only | No | Adding or renaming public configuration keys |
-| `.github/` | GitHub Actions workflow for static validation | Yes | Any workflow or CI trigger change |
+| `.github/` | GitHub Actions for static validation, console build, and manual candidate repository deploy | Yes | Any workflow, CI trigger, environment, Secret binding, or remote-write change |
 | `docker/` | Runtime glue copied into the image: entrypoint, Nginx, Supervisor, healthcheck, ops/admin services, runtime env template | Yes | Any runtime behavior, routing, auth boundary, logs, persistence, process supervision, ops/admin, or healthcheck change |
 | `scripts/` | Maintainer validation, local build/run, and smoke scripts | Yes | Any script, release gate, smoke behavior, Docker helper, or HFS contract validation change |
 | `docs/` | Operator documentation: architecture, config, deployment, ops, release, security, HFS alignment | No | Documentation-only edits; keep facts aligned with root commands, `Dockerfile`, `hfs-dev.toml`, `docker/`, and `scripts/` |
@@ -74,10 +75,14 @@ additional commands without checking real files first.
 
 | Command | Purpose | Scope | Sandbox notes |
 |---|---|---|---|
-| `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, runtime-helper unit tests, Python compile checks, and removes generated `__pycache__` folders. | repo | No Docker or network required. Requires `bash` and `python3`. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
+| `bash scripts/static-check.sh` | Default repository static gate. Runs HFS contract validation, optional external HFS alignment checker, Bash syntax checks, runtime/release-tool unit tests, and Python compile checks. | repo | No Docker or network required. Requires `bash`, `python3`, and Git. If the external `hfs-dev` checker is not present, the script prints an info message and still validates the local contract. |
 | `bash scripts/validate-hfs-contract.sh` | Validate Pattern A repo shape, `hfs-dev.toml`, Space metadata, release pins, routing/security invariants, ignored secret patterns, and smoke coverage. | repo | No Docker or network required. Requires `python3` with `tomllib`, plus standard shell tools. |
 | `python3 scripts/check-qwenpaw-pins.py` | Networked release check that fetches Dockerfile `QWENPAW_SOURCE_REF` from upstream QwenPaw and verifies the expected source version. Add `--require-upstream-main` for latest-main releases. | release pins | Requires network, `git`, and access to GitHub. Not part of the default static gate. |
 | `bash scripts/build-console-bundle.sh <repo> <sha> <version> <output-dir>` | Build and checksum the console for an immutable upstream source commit. The manual `build-console-bundle` workflow uses this when the HFS builder cannot compile the frontend within its memory limit. | release artifact | Requires network, `git`, Node.js/npm, Python 3, and enough build memory. It creates local output only and does not publish. |
+| `python3 scripts/export_space_bundle.py export --source-commit <sha> --manifest hfs-dev.candidate.toml --output <empty-dir>` | Export the exact allowlisted candidate Space bundle from a clean immutable checkout, normalize the candidate manifest, and generate provenance/checksums. | candidate release | Local-only and standard-library only. It performs no network or remote write. |
+| `python3 scripts/export_space_bundle.py verify --bundle <dir>` | Verify the exact candidate path set, target normalization, provenance, and complete SHA-256 coverage. | candidate release | Local-only and standard-library only. Safe for exported and downloaded bundles. |
+| `python3 scripts/export_space_bundle.py paths` | Print the exact final candidate bundle path allowlist used by CI remote preflight/readback. | candidate release | Read-only and credential-free. |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_*.py'` | Run runtime-helper plus candidate exporter/Settings contract unit tests. | repo | Requires Git for a temporary synthetic repository; no Docker, network, Hugging Face package, or credentials required. |
 | `git diff --check` | Whitespace/error check before publishing changes. | repo | Read-only Git check. |
 | `bash -n docker/entrypoint.sh` | Targeted shell syntax check for runtime entrypoint edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
 | `bash -n docker/healthcheck.sh` | Targeted shell syntax check for container healthcheck edits. | `docker/` | Covered by `scripts/static-check.sh`; useful while iterating. |
@@ -98,6 +103,14 @@ additional commands without checking real files first.
 - Treat `hfs-dev.toml` as the machine-readable contract. Keep it aligned with
   `README.md`, `Dockerfile`, `docker/nginx.conf`, `scripts/hf-space-smoke.sh`, and
   `docs/hfs-alignment.md`.
+- Keep `hfs-dev.candidate.toml` identical to production except for `space`. The candidate
+  exporter must normalize it to bundle-root `hfs-dev.toml`; never push the GitHub root
+  directly to the candidate Space.
+- `OPS_TOKEN` is required. Admin, provider, and channel Secrets remain registered optional
+  values: empty local entries are not pushed or treated as missing and are retained by prune.
+- Candidate deployment automation may write only the verified repository bundle to the fixed
+  existing private candidate after exact-main and confirmation gates. Settings, visibility,
+  volumes, lifecycle, runtime smoke, persistence, and cleanup are separate operations.
 - Keep this repository in Pattern A shape. Do not add `cloud/hfs/README.md` or
   `cloud/hfs/Dockerfile`.
 - Do not vendor upstream QwenPaw source into this repository. The `source-fetch` runtime
@@ -155,6 +168,8 @@ additional commands without checking real files first.
   taken over. Runtime `raw.sha`, runtime `stage`, and endpoint smoke are separate checks.
 - Do not run deployment, push, merge, publish, or permission-changing commands unless the
   user explicitly asks for that operation.
+- Do not add production `hfs-dev.toml`, `.env*`, docs, workflows, `AGENTS.md`, `local/`, or
+  scripts to the candidate Space bundle allowlist.
 
 ## Validation
 

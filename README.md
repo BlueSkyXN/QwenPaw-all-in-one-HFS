@@ -141,6 +141,12 @@ TELEGRAM_BOT_TOKEN=<optional>
 DISCORD_BOT_TOKEN=<optional>
 ```
 
+`OPS_TOKEN` is the only unconditionally required Secret in the HFS Settings manifest.
+The admin, provider, and channel Secrets are registered under `optional_secrets`: an empty
+local value is not pushed and does not make `diff` fail, while any non-empty value must not
+be a placeholder. `ADMIN_TOKEN` and `ADMIN_CSRF_TOKEN` become operationally required when
+`ADMIN_ENABLED=true`.
+
 `/_ops/config` reports only secret presence booleans, never secret values.
 
 ## Maintainer Quick Start
@@ -173,6 +179,22 @@ QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
 ```
 
 Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
+
+## Candidate Bundle and Manual Deploy Workflow
+
+Candidate repository publication uses `.github/workflows/deploy-hf-space.yml`; it never
+pushes the GitHub repository root directly. The workflow accepts only a 40-character
+`source_ref` equal to the dispatched GitHub `main` SHA and current `origin/main`, plus the
+literal confirmation `PUBLISH_CANDIDATE`. It exports `hfs-dev.candidate.toml` as the
+bundle's `hfs-dev.toml` and fixes the target to the existing private Space
+`BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`.
+
+The candidate bundle is an exact allowlist with `BUILD_SOURCE.json` and `SHA256SUMS`.
+Before upload, the workflow refuses a non-private Space or any existing remote path outside
+that allowlist. It does not delete remote files, change Settings or volumes, restart the
+Space, or perform runtime smoke. Complete repository readback proves only the uploaded
+source bundle; runtime takeover, authenticated smoke, persistence, restart, backup, and
+restore remain separate release gates.
 
 ## Build
 

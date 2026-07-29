@@ -2,7 +2,8 @@
 
 This directory contains GitHub Actions workflow configuration. Read this card before
 modifying workflow triggers, jobs, permissions, or validation commands.
-Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`.
+Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`,
+`workflows/deploy-hf-space.yml`.
 
 ## Why this is high-risk
 
@@ -21,6 +22,11 @@ Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`.
 - The manual console-bundle workflow must validate an immutable upstream source SHA and
   version before uploading the short-lived build artifact. Publishing that artifact as a
   release asset remains an explicit maintainer action.
+- The manual candidate deploy workflow must bind its input to `GITHUB_SHA` and current
+  `origin/main`, use the `hfs-candidate` environment, target only the fixed private candidate,
+  upload only the verified exporter allowlist, and read back the exact path/checksum set.
+- Candidate repo upload is not runtime takeover or smoke evidence. The deploy workflow must
+  not sync Settings, change volumes/visibility, restart lifecycle state, or delete remote files.
 
 ## Required before changes
 
@@ -35,6 +41,8 @@ Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`.
   automation.
 - Do not echo secrets or load `.env.local` in CI.
 - Do not skip repository checkout or the static validation gate.
+- Do not expose `HF_TOKEN` outside the remote preflight/upload/readback steps, and bind it only
+  from the GitHub environment Secret.
 
 ## Validation
 

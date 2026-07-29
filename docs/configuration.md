@@ -73,7 +73,8 @@ The entrypoint manages the persisted QwenPaw JSON field `security.trusted_proxie
 
 ## Secrets
 
-Set these via Hugging Face Space Settings or local environment only:
+Set these via Hugging Face Space Settings or local environment only. The manifest separates
+unconditionally required Secrets from registered optional Secrets:
 
 ```env
 OPS_TOKEN=<required for protected /_ops endpoints>
@@ -85,6 +86,12 @@ GEMINI_API_KEY=<optional>
 TELEGRAM_BOT_TOKEN=<optional>
 DISCORD_BOT_TOKEN=<optional>
 ```
+
+`hfs-dev.toml` and `hfs-dev.candidate.toml` classify only `OPS_TOKEN` under `secrets`.
+`ADMIN_TOKEN`, `ADMIN_CSRF_TOKEN`, provider API keys, and channel bot tokens are under
+`optional_secrets`. Admin credentials are conditionally required when
+`ADMIN_ENABLED=true`; provider/channel values are required only for the integrations in
+use.
 
 `OPS_TOKEN` protects direct `/_ops/*` diagnostics including `/_ops/health`, `/_ops/healthz`, `/_ops/readyz`, `/_ops/status`, `/_ops/system`, `/_ops/persistence`, `/_ops/config`, `/_ops/version`, `/_ops/logs`, `/_ops/errors`, `/_ops/metrics` and browser diagnostics at `/_ops/?token=...`.
 
@@ -105,6 +112,15 @@ python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-fi
 Secret values are never read back; verify Secret names and Variable values. Do not use
 `--prune --yes` until the separately approved cleanup window. The ignored legacy local wrapper
 remains read-only rollback material through the 7-day observation period.
+
+Settings sync applies these fail-closed rules:
+
+- `OPS_TOKEN` and every registered Variable must have a non-empty, non-placeholder local value.
+- Optional Secrets may be missing or empty. A non-empty optional value is rejected if it is a placeholder.
+- `push` writes only required Secrets and optional Secrets with a non-empty local value.
+- `diff` does not report an unconfigured optional Secret as missing.
+- `--prune --yes` retains a registered optional remote Secret when its local value is empty; it deletes only unregistered remote names.
+- Seed scanning includes every registered Secret that has a non-empty local value, regardless of whether it is required or optional.
 
 ```bash
 cp .env.example .env

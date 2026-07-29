@@ -228,15 +228,25 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
         validate_object_path(manifest.get("mount_config_object", "config/config.toml"), "mount_config_object")
 
     secrets = set(string_list(manifest, "secrets"))
+    optional_secrets = set(string_list(manifest, "optional_secrets"))
     variables = set(string_list(manifest, "variables"))
     local_only = DEFAULT_LOCAL_ONLY | set(string_list(manifest, "local_only"))
     validate_setting_names(secrets, "secrets")
+    validate_setting_names(optional_secrets, "optional_secrets")
     validate_setting_names(variables, "variables")
     validate_setting_names(local_only, "local_only")
-    if secrets & variables:
-        raise SyncError(f"同一键不能同时登记为 secret 和 variable：{sorted(secrets & variables)}")
-    if (secrets | variables) & local_only:
-        raise SyncError(f"本地控制凭据不能推送到 Space：{sorted((secrets | variables) & local_only)}")
+    categories = {
+        "secrets": secrets,
+        "optional_secrets": optional_secrets,
+        "variables": variables,
+        "local_only": local_only,
+    }
+    category_names = list(categories)
+    for index, left in enumerate(category_names):
+        for right in category_names[index + 1 :]:
+            overlap = sorted(categories[left] & categories[right])
+            if overlap:
+                raise SyncError(f"同一键不能同时登记为 {left} 和 {right}：{overlap}")
 
     seed_value = manifest.get("seed_file")
     other_objects = string_list(manifest, "other_objects")
@@ -252,10 +262,21 @@ def local_only_names(manifest: dict[str, Any]) -> set[str]:
     return DEFAULT_LOCAL_ONLY | set(string_list(manifest, "local_only"))
 
 
-def registered_names(manifest: dict[str, Any]) -> tuple[set[str], set[str]]:
+def registered_names(manifest: dict[str, Any]) -> tuple[set[str], set[str], set[str]]:
     secrets = set(string_list(manifest, "secrets"))
+    optional_secrets = set(string_list(manifest, "optional_secrets"))
     variables = set(string_list(manifest, "variables"))
-    return secrets, variables
+    return secrets, optional_secrets, variables
+
+
+def configured_secret_names(
+    required_secrets: set[str],
+    optional_secrets: set[str],
+    env_values: dict[str, str],
+) -> set[str]:
+    return required_secrets | {
+        name for name in optional_secrets if env_values.get(name, "")
+    }
 
 
 def hf_token(env_values: dict[str, str]) -> str:
@@ -540,18 +561,29 @@ def preflight(
     env_file: Path = Path(".env"),
     *,
     for_push: bool = False,
-) -> tuple[dict[str, Any], dict[str, str], str, set[str], set[str], Path | None]:
+) -> tuple[
+    dict[str, Any],
+    dict[str, str],
+    str,
+    set[str],
+    set[str],
+    set[str],
+    Path | None,
+]:
     root = root.resolve()
     manifest = load_manifest(root, manifest_file)
     validate_manifest(manifest)
     env_values = load_env(root, env_file)
     token = hf_token(env_values)
-    secrets, variables = registered_names(manifest)
+    secrets, optional_secrets, variables = registered_names(manifest)
     missing = sorted(name for name in secrets | variables if not env_values.get(name, ""))
     if missing:
         raise SyncError(f"env 文件缺少已登记值，未执行任何写操作：{missing}")
+    configured_secrets = configured_secret_names(secrets, optional_secrets, env_values)
     placeholder_settings = sorted(
-        name for name in secrets | variables if placeholder_value(env_values[name])
+        name
+        for name in configured_secrets | variables
+        if placeholder_value(env_values[name])
     )
     if placeholder_settings:
         raise SyncError(
@@ -563,12 +595,12 @@ def preflight(
     if for_push and local_seed is not None:
         sensitive = sensitive_seed_fields(
             local_seed,
-            protected_secret_values(env_values, secrets),
+            protected_secret_values(env_values, secrets | optional_secrets),
             strict_format=True,
         )
         if sensitive:
             raise SyncError(f"种子疑似包含实际 secret，禁止上传；字段位置：{sensitive}")
-    return manifest, env_values, token, secrets, variables, local_seed
+    return manifest, env_values, token, secrets, optional_secrets, variables, local_seed
 
 
 def resolve_targets(api: HfApi, manifest: dict[str, Any], token: str) -> tuple[str, str]:
@@ -589,7 +621,7 @@ def cmd_diff(
     env_file: Path = Path(".env"),
 ) -> int:
     root = root.resolve()
-    manifest, env_values, token, secrets, variables, local_seed = preflight(
+    manifest, env_values, token, secrets, optional_secrets, variables, local_seed = preflight(
         root, manifest_file, env_file
     )
     api = api_client(token)
@@ -597,14 +629,16 @@ def cmd_diff(
     api.space_info(space, token=token)
 
     differences = 0
-    registered = secrets | variables
+    registered_secrets = secrets | optional_secrets
+    configured_secrets = configured_secret_names(secrets, optional_secrets, env_values)
+    registered = registered_secrets | variables
     deployable_env = set(env_values) - local_only_names(manifest)
     differences += report("env 有但未登记", sorted(deployable_env - registered))
 
     remote_secrets = space_secret_names(space, token)
     remote_variables = api.get_space_variables(space, token=token)
-    differences += report("远端多出 secret", sorted(remote_secrets - secrets))
-    differences += report("远端缺 secret", sorted(secrets - remote_secrets))
+    differences += report("远端多出 secret", sorted(remote_secrets - registered_secrets))
+    differences += report("远端缺 secret", sorted(configured_secrets - remote_secrets))
     differences += report("远端多出 variable", sorted(set(remote_variables) - variables))
     differences += report("远端缺 variable", sorted(variables - set(remote_variables)))
     differences += report(
@@ -626,7 +660,7 @@ def cmd_diff(
         else:
             sensitive = sensitive_seed_fields(
                 local_seed,
-                protected_secret_values(env_values, secrets),
+                protected_secret_values(env_values, registered_secrets),
             )
             differences += report("种子疑似含实际 secret", sensitive)
 
@@ -690,14 +724,16 @@ def cmd_push(
     root = root.resolve()
     if prune and not yes:
         raise SyncError("--prune 会删除远端设置，必须同时传 --yes")
-    manifest, env_values, token, secrets, variables, local_seed = preflight(
+    manifest, env_values, token, secrets, optional_secrets, variables, local_seed = preflight(
         root, manifest_file, env_file, for_push=True
     )
     api = api_client(token)
     space, storage_owner = resolve_targets(api, manifest, token)
     api.space_info(space, token=token)
 
-    for name in sorted(secrets):
+    registered_secrets = secrets | optional_secrets
+    configured_secrets = configured_secret_names(secrets, optional_secrets, env_values)
+    for name in sorted(configured_secrets):
         api.add_space_secret(space, name, env_values[name], token=token)
         print(f"secret 已推送：{name}")
     for name in sorted(variables):
@@ -717,7 +753,7 @@ def cmd_push(
     if prune:
         remote_secrets = space_secret_names(space, token)
         remote_variables = api.get_space_variables(space, token=token)
-        for name in sorted(remote_secrets - secrets):
+        for name in sorted(remote_secrets - registered_secrets):
             api.delete_space_secret(space, name, token=token)
             print(f"secret 已删除：{name}")
         for name in sorted(set(remote_variables) - variables):
@@ -726,7 +762,7 @@ def cmd_push(
 
     remote_secrets = space_secret_names(space, token)
     remote_variables = api.get_space_variables(space, token=token)
-    missing_names = (secrets - remote_secrets) | (variables - set(remote_variables))
+    missing_names = (configured_secrets - remote_secrets) | (variables - set(remote_variables))
     value_drift = {
         name
         for name in variables & set(remote_variables)
@@ -734,7 +770,7 @@ def cmd_push(
     }
     extras = set()
     if prune:
-        extras = (remote_secrets - secrets) | (set(remote_variables) - variables)
+        extras = (remote_secrets - registered_secrets) | (set(remote_variables) - variables)
     if missing_names or value_drift or extras:
         raise SyncError(
             "读回校验失败："
@@ -793,10 +829,10 @@ def cmd_pull(
         raise SyncError(f"实例配置回收结果不是普通文件：{runtime_uri}")
     downloaded.chmod(0o600)
 
-    secrets, _ = registered_names(manifest)
+    secrets, optional_secrets, _ = registered_names(manifest)
     sensitive = sensitive_seed_fields(
         downloaded,
-        protected_secret_values(env_values, secrets),
+        protected_secret_values(env_values, secrets | optional_secrets),
     )
     relative = downloaded.relative_to(root)
     print(f"实例配置已回收：{relative}（来源 {runtime_uri}）")
