@@ -22,6 +22,7 @@ concurrency:
 env:
   CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate
   HF_CLI_VERSION: "1.5.0"
+  HF_CLI_CLICK_VERSION: "8.3.1"
 
 jobs:
   deploy-candidate:
@@ -72,7 +73,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 -m pip install --disable-pip-version-check "huggingface_hub==${HF_CLI_VERSION}"
+          python3 -m pip install --disable-pip-version-check \
+            "huggingface_hub==${HF_CLI_VERSION}" \
+            "click==${HF_CLI_CLICK_VERSION}"
+          python3 -m huggingface_hub.cli.hf version
+          python3 -m huggingface_hub.cli.hf --help >/dev/null
+          python3 -m huggingface_hub.cli.hf upload --help >/dev/null
+          python3 -m huggingface_hub.cli.hf download --help >/dev/null
           command -v hf >/dev/null
 
       - name: Require an existing private candidate with no path outside the allowlist
