@@ -39,7 +39,7 @@ and backup path in the local deployment ledger, not in Git:
 
 ```bash
 RELEASE_BACKUP_ID="pre-upgrade-$(date -u +%Y%m%dT%H%M%SZ)"
-hf buckets cp \
+python3 -m huggingface_hub.cli.hf buckets cp \
   "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/working/" \
   "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/backups/$RELEASE_BACKUP_ID/working/"
 ```
@@ -108,8 +108,8 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
 
 - Confirm Space build succeeded.
 - Confirm runtime takeover completed.
-- Confirm `hf spaces volumes list <space-id> --json` reports a read-write Storage Bucket
-  mounted at `/data`.
+- Confirm `python3 -m huggingface_hub.cli.hf spaces info <space-id> --expand runtime`
+  reports a read-write Storage Bucket mounted at `/data`.
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
 - Confirm `/readyz` reports upstream QwenPaw core-agent readiness, not only an open TCP port; verify a real app/API path after later background startup work settles.
@@ -120,10 +120,16 @@ For a live persistence drill, record the bucket-side config object, restart the 
 and compare it after takeover:
 
 ```bash
-hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
-hf spaces restart "$HF_SPACE_ID"
-hf spaces wait "$HF_SPACE_ID" --timeout 15m
-hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
+python3 -m huggingface_hub.cli.hf buckets list \
+  "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --recursive --format json
+python3 - <<'PY'
+import os
+from huggingface_hub import HfApi
+HfApi(token=os.environ.get("HF_TOKEN")).restart_space(os.environ["HF_SPACE_ID"])
+PY
+python3 -m huggingface_hub.cli.hf spaces info "$HF_SPACE_ID" --expand runtime
+python3 -m huggingface_hub.cli.hf buckets list \
+  "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --recursive --format json
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
@@ -223,7 +229,8 @@ gh run list --repo BlueSkyXN/QwenPaw-all-in-one-HFS --branch main --limit 5
 Confirm Hugging Face runtime:
 
 ```bash
-hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+python3 -m huggingface_hub.cli.hf spaces info \
+  BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private
 ```
 
 Done means:

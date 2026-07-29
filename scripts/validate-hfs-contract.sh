@@ -367,8 +367,8 @@ candidate_markers = {
     "info.private is not True": "candidate deploy must fail unless the Space is private",
     "actual - expected": "candidate preflight must reject remote paths outside the allowlist",
     "actual != expected": "candidate readback must require the exact final path set",
-    "hf upload": "candidate deploy must upload only after verification",
-    "hf download": "candidate deploy must perform complete repository readback",
+    "python3 -m huggingface_hub.cli.hf upload": "candidate deploy must upload only after verification",
+    "python3 -m huggingface_hub.cli.hf download": "candidate deploy must perform complete repository readback",
     "cmp \"$bundle/SHA256SUMS\"": "candidate deploy must compare the checksum manifest after readback",
 }
 for marker, message in candidate_markers.items():
@@ -376,6 +376,8 @@ for marker, message in candidate_markers.items():
         failures.append(message)
 if re.search(r"(?m)^\s{2}(?:push|pull_request|schedule):", candidate_workflow):
     failures.append("candidate deploy must not have an automatic trigger")
+if re.search(r"(?m)^\s+hf (?:upload|download|spaces|buckets|repos)\b", candidate_workflow):
+    failures.append("candidate deploy must use the pinned Hugging Face module CLI")
 hf_token_bindings = re.findall(r"(?m)^\s*HF_TOKEN:\s*(.+?)\s*$", candidate_workflow)
 if not hf_token_bindings or any(binding != "${{ secrets.HF_TOKEN }}" for binding in hf_token_bindings):
     failures.append("candidate deploy HF_TOKEN must come only from the GitHub environment Secret")
@@ -447,6 +449,25 @@ for forbidden in (
 ):
     if forbidden in formal_workflow:
         failures.append(f"formal deploy must not perform unrelated remote mutation: {forbidden}")
+
+operator_docs = "\n".join(
+    (root / path).read_text(encoding="utf-8")
+    for path in (
+        "README.md",
+        "docs/deployment.md",
+        "docs/ops-runbook.md",
+        "docs/release-checklist.md",
+        "docs/security.md",
+    )
+)
+for pattern, message in (
+    (r"(?m)^\s*hf (?:upload|download|spaces|buckets|repos)\b", "operator docs must use the module CLI"),
+    (r"spaces info[^\n]*--json", "operator docs must not claim spaces info has JSON output"),
+    (r"spaces volumes", "operator docs must not claim the pinned CLI mutates Space volumes"),
+    (r"spaces wait", "operator docs must not claim the pinned CLI has a Space wait command"),
+):
+    if re.search(pattern, operator_docs):
+        failures.append(message)
 
 sync_source = (root / "scripts" / "hf_space_sync.py").read_text(encoding="utf-8")
 test_source = (root / "scripts" / "test_release_tools.py").read_text(encoding="utf-8")

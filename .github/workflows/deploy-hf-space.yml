@@ -80,7 +80,6 @@ jobs:
           python3 -m huggingface_hub.cli.hf --help >/dev/null
           python3 -m huggingface_hub.cli.hf upload --help >/dev/null
           python3 -m huggingface_hub.cli.hf download --help >/dev/null
-          command -v hf >/dev/null
 
       - name: Require an existing private candidate with no path outside the allowlist
         env:
@@ -140,7 +139,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          hf upload \
+          python3 -m huggingface_hub.cli.hf upload \
             "$CANDIDATE_SPACE" \
             "$RUNNER_TEMP/qwenpaw-candidate-bundle" \
             . \
@@ -184,7 +183,7 @@ jobs:
               raise SystemExit("Candidate repository path readback does not exactly match the verified bundle.")
           print(f"Candidate repository path readback passed for {len(actual)} files.")
           PY
-          if ! hf download "$CANDIDATE_SPACE" \
+          if ! python3 -m huggingface_hub.cli.hf download "$CANDIDATE_SPACE" \
             --repo-type space \
             --revision main \
             --local-dir "$readback" >/dev/null; then

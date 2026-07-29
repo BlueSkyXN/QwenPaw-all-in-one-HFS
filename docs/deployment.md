@@ -133,21 +133,22 @@ legacy `small`/`medium`/`large` Space storage API is deprecated in current
 Create a private bucket within the account's existing storage allowance:
 
 ```bash
-hf buckets create <namespace>/<bucket-name> --private --exist-ok
+python3 -m huggingface_hub.cli.hf buckets create \
+  <namespace>/<bucket-name> --private --exist-ok
 ```
 
-Attach it read-write at `/data`:
+`huggingface_hub==1.5.0` does not expose Space volume mutation through its module CLI.
+Attach the bucket read-write at `/data` through the reviewed HFS provisioner or Hugging
+Face Settings, then read back the runtime:
 
 ```bash
-hf spaces volumes set <namespace>/<space-name> \
-  -v hf://buckets/<namespace>/<bucket-name>:/data
-hf spaces wait <namespace>/<space-name> --timeout 15m
-hf spaces volumes list <namespace>/<space-name> --json
+python3 -m huggingface_hub.cli.hf spaces info \
+  <namespace>/<space-name> --expand runtime
 ```
 
 The expected volume has `type=bucket`, `mount_path=/data` and `read_only=false`.
-`hf spaces volumes set` replaces the complete volume list, so include every existing
-mount in the command instead of accidentally dropping unrelated volumes.
+Volume mutation replaces the complete volume list, so the provisioner must include every
+existing mount instead of accidentally dropping unrelated volumes.
 
 Record the bucket ID only in local `.env` or another private deployment ledger:
 
@@ -200,7 +201,8 @@ After the formal workflow uploads and requests a factory restart, the Space repo
 can update before the running container does. Check runtime takeover explicitly:
 
 ```bash
-hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+python3 -m huggingface_hub.cli.hf spaces info \
+  BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private
 ```
 
 The GitHub source SHA is carried by the downloaded `BUILD_SOURCE.wrapper_source_commit`; the

@@ -96,7 +96,7 @@ additional commands without checking real files first.
 | `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` or `QWENPAW_OPS_TOKEN` is set. |
 | `ADMIN_EXPECTED_ENABLED=false bash scripts/admin-smoke.sh http://127.0.0.1:7860` | Smoke the default disabled admin boundary on a running local container. | repo/runtime | Requires a running container or service at the target URL. Mutating admin actions run only when explicitly enabled by env. |
 | `bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"` | Smoke a deployed Hugging Face Space. | live Space | Requires network, a reachable Space URL, and usually `OPS_TOKEN` from local/private environment. Do not paste real tokens into public logs or commits. |
-| `hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json` | Inspect Hugging Face repo/runtime state during release closeout. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
+| `python3 -m huggingface_hub.cli.hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private` | Inspect Hugging Face repo/runtime state during release closeout with the pinned module CLI. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
 
 ## Global rules
 

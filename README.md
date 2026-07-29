@@ -90,14 +90,17 @@ runtime data as durable. Without that volume, `/data` belongs to the ephemeral S
 container and is lost on restart, rebuild or stop.
 
 ```bash
-hf buckets create <namespace>/<bucket-name> --private --exist-ok
-hf spaces volumes set <namespace>/<space-name> \
-  -v hf://buckets/<namespace>/<bucket-name>:/data
-hf spaces volumes list <namespace>/<space-name> --json
+python3 -m huggingface_hub.cli.hf buckets create \
+  <namespace>/<bucket-name> --private --exist-ok
+python3 -m huggingface_hub.cli.hf spaces info \
+  <namespace>/<space-name> --expand runtime
 ```
 
-`hf spaces volumes set` replaces the complete volume list. When a Space already has
-other mounts, repeat every required `-v` argument in the same command.
+`huggingface_hub==1.5.0` does not expose Space volume mutation through its module CLI.
+Attach the bucket through the reviewed HFS provisioner or Hugging Face Settings, then
+use the `spaces info --expand runtime` readback above to verify the `/data` mount. A
+volume update replaces the complete mount list, so the provisioner must submit every
+required mount rather than only the new bucket.
 
 ```text
 /data/qwenpaw/working      QwenPaw config, memory, skills and runtime state
