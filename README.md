@@ -13,6 +13,19 @@ pinned: false
 
 This repository is a **Pattern A HFS Port Repository** for running QwenPaw on Hugging Face Docker Space.
 
+## HFS v2.1 Preview Contract
+
+This project is explicitly `project_class = "preview"`. The canonical
+`hfs-dev.toml` target is `target_role = "primary"` and may be updated directly for
+routine Preview changes; no candidate, promotion, or Release step is a default prerequisite.
+`hfs-dev.candidate.toml` remains available only as an optional isolated check for high-risk
+changes.
+
+Every Space Secret must originate in the Git-ignored plaintext file declared by the selected
+manifest. The canonical profile uses `.env`; the optional candidate uses
+`local/hfs-targets/candidate.env`. Hugging Face Secrets are deployment copies and must not be
+the only recoverable source. Neither local value file belongs in Git or the Docker context.
+
 It is not the upstream QwenPaw product source. It maintains the Hugging Face Space delivery package:
 
 - root-level Space card and Dockerfile
@@ -48,13 +61,13 @@ Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 
 ```text
 Pattern: A - HFS Port Repository
-HFS v2 manifest: sovereignty=port, lane=source, version_source=commit
+HFS v2.1 manifest: project_class=preview, target_role=primary, sovereignty=port, lane=source, version_source=commit
 Space root: repo root
 Source of truth: Dockerfile's fixed upstream QwenPaw commit and matching console bundle pins
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 ```
 
-`hfs-dev.toml` is a semantic HFS v2 registry: it records the project, Space, source lane,
+`hfs-dev.toml` is a semantic HFS v2.1 registry: it records the Preview class, target role, project, Space, source lane,
 version-source choice, and environment-key ownership only. The Dockerfile,
 `scripts/check-qwenpaw-pins.py`, `scripts/build-console-bundle.sh`, and the manual bundle
 workflow are the evidence for immutable pins and the matching console bundle. That bundle is
@@ -181,6 +194,9 @@ QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
 Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
 ## Candidate Bundle and Manual Deploy Workflow
+
+This candidate flow is optional for high-risk Preview changes. Routine Preview work may update
+the canonical Space directly and does not have to pass through this workflow first.
 
 Candidate repository publication uses `.github/workflows/deploy-hf-space.yml`; it never
 pushes the GitHub repository root directly. The workflow accepts only a 40-character
@@ -337,6 +353,6 @@ Hugging Face runtime.raw.sha == local HEAD and runtime.stage == RUNNING
 
 Only then treat the Space as updated.
 
-## Production Boundary
+## Preview Boundary
 
-This is an HFS demo / personal deployment package. It is not a high-availability production architecture. For sensitive use, keep the Space private/protected, enable authentication, configure strong tokens and review `docs/security.md`.
+This is an HFS demo / personal Preview deployment package. It is not a high-availability production architecture. For sensitive use, keep the Space private/protected, enable authentication, configure strong tokens and review `docs/security.md`.

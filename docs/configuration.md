@@ -7,7 +7,12 @@ Configuration is split into four surfaces:
 - Hugging Face Space Secrets, which are sensitive runtime values.
 - The ignored local `.env` HFS value ledger, which records local control, deployment, and private smoke/login values.
 
-`hfs-dev.toml` is the semantic HFS v2 registry for these surfaces: it records the key names and their ownership only. It contains no values, build pins, seed configuration, mount configuration, or bucket configuration. `.env.local` remains ignored for compatibility with local Docker/run workflows, but `.env` is the canonical HFS value ledger.
+`hfs-dev.toml` is the semantic HFS v2.1 registry for these surfaces: it records the Preview
+classification, target role, key names, and local source paths only. It contains no values,
+build pins, seed configuration, mount configuration, or bucket configuration. `.env.local`
+remains ignored for compatibility with local Docker/run workflows, but `.env` is the canonical
+HFS plaintext value ledger. The optional candidate profile uses the separate ignored
+`local/hfs-targets/candidate.env` ledger.
 
 ## Build Args
 
@@ -73,7 +78,8 @@ The entrypoint manages the persisted QwenPaw JSON field `security.trusted_proxie
 
 ## Secrets
 
-Set these via Hugging Face Space Settings or local environment only. The manifest separates
+Write these to the manifest-declared ignored local plaintext ledger first, then copy them to
+Hugging Face Space Settings. The manifest separates
 unconditionally required Secrets from registered optional Secrets:
 
 ```env
@@ -101,13 +107,18 @@ Prefer `X-Ops-Token` or `Authorization: Bearer` for scripts. The query token for
 
 `.env` is the machine-local HFS value ledger for deployment records, Space values, and smoke credentials. It is ignored by git and Docker build context. Start from the committed no-secret template:
 
-Use the candidate or production manifest explicitly for Settings `diff → push → readback`:
+Use the canonical Preview manifest for routine Settings `diff → push → readback`; the script
+selects `.env` from the manifest:
 
 ```bash
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
+python3 scripts/hf_space_sync.py push --manifest hfs-dev.toml
+python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
 ```
+
+For an explicitly chosen high-risk candidate check, use `--manifest hfs-dev.candidate.toml`;
+the script then selects `local/hfs-targets/candidate.env`. An explicit `--env-file` is accepted
+only when it exactly matches the selected manifest.
 
 Secret values are never read back; verify Secret names and Variable values. Do not use
 `--prune --yes` until the separately approved cleanup window. The ignored legacy local wrapper

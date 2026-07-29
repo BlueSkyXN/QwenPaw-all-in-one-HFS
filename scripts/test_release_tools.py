@@ -116,9 +116,9 @@ class SyntheticBundleRepository:
             "\n".join(
                 [
                     f"GitHub: {exporter.WRAPPER_REPOSITORY}",
-                    f"Hugging Face Space: {exporter.PRODUCTION_SPACE_URL}",
-                    f"Live app: {exporter.PRODUCTION_LIVE_URL}",
-                    f"HF_SPACE_ID={exporter.PRODUCTION_SPACE}",
+                    f"Hugging Face Space: {exporter.PRIMARY_SPACE_URL}",
+                    f"Live app: {exporter.PRIMARY_LIVE_URL}",
+                    f"HF_SPACE_ID={exporter.PRIMARY_SPACE}",
                     "",
                 ]
             ),
@@ -127,12 +127,16 @@ class SyntheticBundleRepository:
             exporter.CANDIDATE_MANIFEST,
             "\n".join(
                 [
-                    'standard = "2.0"',
+                    'standard = "2.1"',
                     'project = "qwenpaw-all-in-one-hfs"',
                     f'space = "{exporter.CANDIDATE_SPACE}"',
+                    'project_class = "preview"',
+                    'target_role = "candidate"',
                     'sovereignty = "port"',
                     'lane = "source"',
                     'version_source = "commit"',
+                    'env_file = "local/hfs-targets/candidate.env"',
+                    'secret_files = []',
                     'local_only = ["HF_TOKEN"]',
                     'secrets = ["OPS_TOKEN"]',
                     'optional_secrets = ["OPENAI_API_KEY"]',
@@ -212,12 +216,12 @@ class CandidateBundleTests(unittest.TestCase):
         self.assertEqual(evidence["target_space"], exporter.CANDIDATE_SPACE)
         exporter.verify_bundle(bundle)
 
-    def test_verifier_rejects_production_space_target_leak(self) -> None:
+    def test_verifier_rejects_primary_space_target_leak(self) -> None:
         bundle = self.synthetic.export()
         with (bundle / "README.md").open("a", encoding="utf-8") as file:
-            file.write(f"HF_SPACE_ID={exporter.PRODUCTION_SPACE}\n")
+            file.write(f"HF_SPACE_ID={exporter.PRIMARY_SPACE}\n")
         rewrite_checksums(bundle)
-        with self.assertRaisesRegex(exporter.BundleError, "production Space target"):
+        with self.assertRaisesRegex(exporter.BundleError, "canonical primary Space target"):
             exporter.verify_bundle(bundle)
 
     def test_verifier_rejects_unexpected_file(self) -> None:
@@ -246,12 +250,16 @@ def write_sync_fixture(root: Path, *, ops_token: str, optional_token: str) -> No
     (root / "hfs-dev.toml").write_text(
         "\n".join(
             [
-                'standard = "2.0"',
+                'standard = "2.1"',
                 'project = "qwenpaw-all-in-one-hfs"',
                 f'space = "{exporter.CANDIDATE_SPACE}"',
+                'project_class = "preview"',
+                'target_role = "candidate"',
                 'sovereignty = "port"',
                 'lane = "source"',
                 'version_source = "commit"',
+                'env_file = ".env"',
+                'secret_files = []',
                 'local_only = ["HF_TOKEN"]',
                 'secrets = ["OPS_TOKEN"]',
                 'optional_secrets = ["OPENAI_API_KEY"]',
@@ -294,6 +302,14 @@ class OptionalSecretTests(unittest.TestCase):
     def test_missing_required_secret_is_rejected(self) -> None:
         with self.assertRaisesRegex(sync.SyncError, "缺少已登记值"):
             self.preflight("", "")
+
+    def test_env_file_override_must_match_manifest(self) -> None:
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        write_sync_fixture(root, ops_token="required-ops-value", optional_token="")
+        with self.assertRaisesRegex(sync.SyncError, "必须与 manifest 声明一致"):
+            sync.preflight(root, env_file=Path("local/hfs-targets/candidate.env"))
 
     def test_nonempty_optional_placeholder_is_rejected(self) -> None:
         with self.assertRaisesRegex(sync.SyncError, "仍是占位符"):

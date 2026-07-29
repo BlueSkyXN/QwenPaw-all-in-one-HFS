@@ -42,8 +42,8 @@ Space package surface.
 | `AGENTS.md` | Startup router, directory map, command index, repository-wide boundaries | No | Update when repository structure, commands, or local cards change |
 | `README.md` | Hugging Face Space card plus human maintainer overview | No | Updating Space metadata, public quick start, or documented runtime shape |
 | `Dockerfile` | Root Docker Space build, upstream source fetch/install, release pin environment | No | Changing base image, source pins, OS packages, build args, ports, copied files, healthcheck, user, or entrypoint |
-| `hfs-dev.toml` | Production HFS semantic contract and required/optional Settings ownership | No | Changing HFS pattern, runtime mode, Settings categories, ports, or target Space |
-| `hfs-dev.candidate.toml` | Candidate HFS profile; must differ from production only by fixed Space id | No | Changing candidate target or Settings ownership |
+| `hfs-dev.toml` | Canonical Preview HFS semantic contract and required/optional Settings ownership | No | Changing HFS pattern, runtime mode, Settings categories, ports, or target Space |
+| `hfs-dev.candidate.toml` | Optional high-risk Preview candidate profile; differs by Space, target role, and isolated env file | No | Changing candidate target or Settings ownership |
 | `.dockerignore` | Docker build context boundary and secret/local exclusions | No | Changing what can enter the Space build context |
 | `.gitignore` | Git working tree exclusions for local secrets, runtime data, caches, and ignored mirrors | No | Changing local/private file handling |
 | `.env.example` | Non-secret example runtime values only | No | Adding or renaming public configuration keys |
@@ -103,7 +103,8 @@ additional commands without checking real files first.
 - Treat `hfs-dev.toml` as the machine-readable contract. Keep it aligned with
   `README.md`, `Dockerfile`, `docker/nginx.conf`, `scripts/hf-space-smoke.sh`, and
   `docs/hfs-alignment.md`.
-- Keep `hfs-dev.candidate.toml` identical to production except for `space`. The candidate
+- Keep `hfs-dev.candidate.toml` aligned with the canonical Preview profile except for `space`,
+  `target_role`, and `env_file`. The candidate
   exporter must normalize it to bundle-root `hfs-dev.toml`; never push the GitHub root
   directly to the candidate Space.
 - `OPS_TOKEN` is required. Admin, provider, and channel Secrets remain registered optional
@@ -168,7 +169,7 @@ additional commands without checking real files first.
   taken over. Runtime `raw.sha`, runtime `stage`, and endpoint smoke are separate checks.
 - Do not run deployment, push, merge, publish, or permission-changing commands unless the
   user explicitly asks for that operation.
-- Do not add production `hfs-dev.toml`, `.env*`, docs, workflows, `AGENTS.md`, `local/`, or
+- Do not add canonical `hfs-dev.toml`, `.env*`, docs, workflows, `AGENTS.md`, `local/`, or
   scripts to the candidate Space bundle allowlist.
 
 ## Validation

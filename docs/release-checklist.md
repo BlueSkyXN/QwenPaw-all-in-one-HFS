@@ -163,7 +163,7 @@ and accepted. A successful repository upload/readback alone is a publish result.
 
 ## GitHub/Hugging Face Closeout
 
-This direct two-remote closeout applies to canonical production. Do not push the GitHub root
+This direct two-remote closeout applies to the canonical Preview Space. Do not push the GitHub root
 directly to the candidate Space.
 
 Before pushing:

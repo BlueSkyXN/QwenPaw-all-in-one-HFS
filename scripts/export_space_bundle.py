@@ -25,11 +25,11 @@ from typing import Any, cast
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CANDIDATE_MANIFEST = "hfs-dev.candidate.toml"
 CANDIDATE_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
-PRODUCTION_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS"
+PRIMARY_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS"
 WRAPPER_REPOSITORY = "https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS"
-PRODUCTION_SPACE_URL = f"https://huggingface.co/spaces/{PRODUCTION_SPACE}"
+PRIMARY_SPACE_URL = f"https://huggingface.co/spaces/{PRIMARY_SPACE}"
 CANDIDATE_SPACE_URL = f"https://huggingface.co/spaces/{CANDIDATE_SPACE}"
-PRODUCTION_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space"
+PRIMARY_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space"
 CANDIDATE_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space"
 
 SOURCE_TO_BUNDLE = {
@@ -79,12 +79,12 @@ TOKEN_LITERAL = re.compile(
 )
 FORMAL_TARGET_PATTERNS = (
     re.compile(
-        rf"(?m)^\s*space\s*=\s*['\"]{re.escape(PRODUCTION_SPACE)}['\"]\s*(?:#.*)?$"
+        rf"(?m)^\s*space\s*=\s*['\"]{re.escape(PRIMARY_SPACE)}['\"]\s*(?:#.*)?$"
     ),
-    re.compile(rf"{re.escape(PRODUCTION_SPACE_URL)}(?![-A-Za-z0-9])"),
-    re.compile(rf"{re.escape(PRODUCTION_LIVE_URL)}(?![-A-Za-z0-9])"),
+    re.compile(rf"{re.escape(PRIMARY_SPACE_URL)}(?![-A-Za-z0-9])"),
+    re.compile(rf"{re.escape(PRIMARY_LIVE_URL)}(?![-A-Za-z0-9])"),
     re.compile(
-        rf"(?m)^\s*HF_SPACE_ID\s*=\s*{re.escape(PRODUCTION_SPACE)}\s*(?:#.*)?$"
+        rf"(?m)^\s*HF_SPACE_ID\s*=\s*{re.escape(PRIMARY_SPACE)}\s*(?:#.*)?$"
     ),
 )
 
@@ -155,13 +155,13 @@ def _candidate_readme(raw: bytes) -> bytes:
         raise BundleError("README.md must be UTF-8") from exc
 
     text = re.sub(
-        rf"{re.escape(PRODUCTION_SPACE_URL)}(?![-A-Za-z0-9])",
+        rf"{re.escape(PRIMARY_SPACE_URL)}(?![-A-Za-z0-9])",
         CANDIDATE_SPACE_URL,
         text,
     )
-    text = text.replace(PRODUCTION_LIVE_URL, CANDIDATE_LIVE_URL)
+    text = text.replace(PRIMARY_LIVE_URL, CANDIDATE_LIVE_URL)
     text = re.sub(
-        rf"(?m)^(\s*HF_SPACE_ID\s*=\s*){re.escape(PRODUCTION_SPACE)}(\s*(?:#.*)?)$",
+        rf"(?m)^(\s*HF_SPACE_ID\s*=\s*){re.escape(PRIMARY_SPACE)}(\s*(?:#.*)?)$",
         rf"\g<1>{CANDIDATE_SPACE}\g<2>",
         text,
     )
@@ -177,6 +177,16 @@ def _validate_candidate_manifest(raw: bytes) -> None:
         raise BundleError("candidate manifest is not valid UTF-8 TOML") from exc
     if manifest.get("space") != CANDIDATE_SPACE:
         raise BundleError(f"candidate manifest must target the fixed private Space {CANDIDATE_SPACE}")
+    expected = {
+        "standard": "2.1",
+        "project_class": "preview",
+        "target_role": "candidate",
+        "env_file": "local/hfs-targets/candidate.env",
+        "secret_files": [],
+    }
+    for key, value in expected.items():
+        if manifest.get(key) != value:
+            raise BundleError(f"candidate manifest {key} must be {value!r}")
 
 
 def _build_source(source_commit: str, dockerfile: str) -> dict[str, Any]:
@@ -333,7 +343,7 @@ def _verify_target_guards(bundle: Path, files: set[str]) -> None:
             raise BundleError(f"bundle text file is not UTF-8: {relative}") from exc
         for pattern in FORMAL_TARGET_PATTERNS:
             if pattern.search(text):
-                raise BundleError(f"candidate bundle leaks the production Space target: {relative}")
+                raise BundleError(f"candidate bundle leaks the canonical primary Space target: {relative}")
         if TOKEN_LITERAL.search(text):
             raise BundleError(f"candidate bundle contains a token-like literal: {relative}")
 

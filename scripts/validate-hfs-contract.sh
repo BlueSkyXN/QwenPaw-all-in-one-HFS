@@ -97,14 +97,18 @@ raw = manifest_path.read_text(encoding="utf-8")
 manifest = tomllib.loads(raw)
 
 expected_scalars = {
-    "standard": "2.0",
+    "standard": "2.1",
     "project": "qwenpaw-all-in-one-hfs",
     "space": "BlueSkyXN/QwenPaw-all-in-one-HFS",
+    "project_class": "preview",
+    "target_role": "primary",
     "sovereignty": "port",
     "lane": "source",
     "version_source": "commit",
+    "env_file": ".env",
 }
 expected_lists = {
+    "secret_files": set(),
     "local_only": {
         "GH_TOKEN",
         "HF_TOKEN",
@@ -239,13 +243,17 @@ import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1])
-production = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
+primary = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
 candidate = tomllib.loads((root / "hfs-dev.candidate.toml").read_text(encoding="utf-8"))
 if candidate.get("space") != "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate":
     raise SystemExit("candidate manifest has the wrong fixed Space id")
-for key in sorted(set(production) | set(candidate)):
-    if key != "space" and production.get(key) != candidate.get(key):
-        raise SystemExit(f"candidate manifest differs from production at {key}")
+if candidate.get("project_class") != "preview" or candidate.get("target_role") != "candidate":
+    raise SystemExit("candidate manifest must remain an optional preview candidate")
+if candidate.get("env_file") != "local/hfs-targets/candidate.env":
+    raise SystemExit("candidate manifest must use its isolated local plaintext ledger")
+for key in sorted(set(primary) | set(candidate)):
+    if key not in {"space", "target_role", "env_file"} and primary.get(key) != candidate.get(key):
+        raise SystemExit(f"candidate manifest differs from primary at {key}")
 PY_VALIDATE_PROFILE
 
 python3 - "$repo_root" <<'PY_VALIDATE_CANDIDATE_RELEASE'
@@ -301,7 +309,7 @@ formal_samples = {
 patterns = namespace.get("FORMAL_TARGET_PATTERNS", ())
 for sample in formal_samples:
     if not any(pattern.search(sample) for pattern in patterns):
-        failures.append(f"candidate exporter lacks a production-target leak guard for {sample}")
+        failures.append(f"candidate exporter lacks a canonical-primary-target leak guard for {sample}")
 candidate_samples = {
     f'space = "{expected_space}"',
     f"https://huggingface.co/spaces/{expected_space}",
@@ -311,7 +319,7 @@ candidate_samples = {
 }
 for sample in candidate_samples:
     if any(pattern.search(sample) for pattern in patterns):
-        failures.append(f"production-target leak guard incorrectly rejects an allowed candidate/source value: {sample}")
+        failures.append(f"canonical-primary-target leak guard incorrectly rejects an allowed candidate/source value: {sample}")
 
 workflow = (root / ".github" / "workflows" / "deploy-hf-space.yml").read_text(encoding="utf-8")
 required_workflow_markers = {

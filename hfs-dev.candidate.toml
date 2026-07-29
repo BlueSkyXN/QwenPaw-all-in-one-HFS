@@ -1,9 +1,13 @@
-standard = "2.0"
+standard = "2.1"
 project = "qwenpaw-all-in-one-hfs"
 space = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
+project_class = "preview"
+target_role = "candidate"
 sovereignty = "port"
 lane = "source"
 version_source = "commit"
+env_file = "local/hfs-targets/candidate.env"
+secret_files = []
 
 # Values stay in the ignored local .env ledger; these names are never synced to Space.
 local_only = [

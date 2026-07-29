@@ -23,7 +23,7 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
 - `build-console-bundle.sh` must build only an immutable upstream commit, verify its source
   version, and emit a checksum beside the bundle. It must not publish artifacts itself.
 - `export_space_bundle.py` must read its exact allowlist from a clean immutable commit,
-  normalize only `hfs-dev.candidate.toml` to the exported `hfs-dev.toml`, reject production
+  normalize only `hfs-dev.candidate.toml` to the exported `hfs-dev.toml`, reject canonical
   Space target leaks, and verify complete checksums. It must never perform remote actions.
 - `hf_space_sync.py` requires all registered Variables and required Secrets. Registered
   optional Secrets may be empty; only non-empty values are pushed and required on readback,
@@ -48,7 +48,7 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
 - Do not make scripts mutate remotes, deploy, or delete local data unless the user asked for
   that operation and the command name clearly signals it.
 - Do not broaden the candidate bundle allowlist to include docs, CI, local material, value
-  ledgers, the production manifest, or repository control files.
+  ledgers, the canonical manifest, or repository control files.
 
 ## Validation
 
