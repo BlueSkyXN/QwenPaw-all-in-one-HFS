@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -246,39 +247,55 @@ class CandidateBundleTests(unittest.TestCase):
             )
 
 
-def write_sync_fixture(root: Path, *, ops_token: str, optional_token: str) -> None:
-    (root / "hfs-dev.toml").write_text(
-        "\n".join(
+def write_sync_fixture(
+    root: Path,
+    *,
+    ops_token: str,
+    optional_token: str,
+    port_value: str = "7860",
+    local_only: list[str] | None = None,
+    required_secrets: list[str] | None = None,
+    optional_secrets: list[str] | None = None,
+    extra_env: list[str] | None = None,
+    mount_config: bool = False,
+) -> None:
+    manifest_lines = [
+        'standard = "2.1"',
+        'project = "qwenpaw-all-in-one-hfs"',
+        f'space = "{exporter.CANDIDATE_SPACE}"',
+        'project_class = "preview"',
+        'target_role = "candidate"',
+        'sovereignty = "port"',
+        'lane = "source"',
+        'version_source = "commit"',
+        'env_file = ".env"',
+        'secret_files = []',
+        f"local_only = {json.dumps(local_only or ['HF_TOKEN'])}",
+        f"secrets = {json.dumps(required_secrets or ['OPS_TOKEN'])}",
+        f"optional_secrets = {json.dumps(optional_secrets or ['OPENAI_API_KEY'])}",
+        'variables = ["PORT"]',
+    ]
+    if mount_config:
+        manifest_lines.extend(
             [
-                'standard = "2.1"',
-                'project = "qwenpaw-all-in-one-hfs"',
-                f'space = "{exporter.CANDIDATE_SPACE}"',
-                'project_class = "preview"',
-                'target_role = "candidate"',
-                'sovereignty = "port"',
-                'lane = "source"',
-                'version_source = "commit"',
-                'env_file = ".env"',
-                'secret_files = []',
-                'local_only = ["HF_TOKEN"]',
-                'secrets = ["OPS_TOKEN"]',
-                'optional_secrets = ["OPENAI_API_KEY"]',
-                'variables = ["PORT"]',
-                "",
+                'mount_config_bucket = "qwenpaw-security-test"',
+                'mount_config_object = "config/config.toml"',
             ]
-        ),
+        )
+    manifest_lines.append("")
+    (root / "hfs-dev.toml").write_text(
+        "\n".join(manifest_lines),
         encoding="utf-8",
     )
+    env_lines = [
+        "HF_TOKEN=local-control-token",
+        f"OPS_TOKEN={ops_token}",
+        f"OPENAI_API_KEY={optional_token}",
+        f"PORT={port_value}",
+    ]
+    env_lines.extend(extra_env or [])
     (root / ".env").write_text(
-        "\n".join(
-            [
-                "HF_TOKEN=local-control-token",
-                f"OPS_TOKEN={ops_token}",
-                f"OPENAI_API_KEY={optional_token}",
-                "PORT=7860",
-                "",
-            ]
-        ),
+        "\n".join(env_lines) + "\n",
         encoding="utf-8",
     )
 
@@ -375,6 +392,334 @@ class FakeSpaceApi:
 
     def get_space_variables(self, *_args, **_kwargs) -> dict[str, FakeVariable]:
         return dict(self.remote_variables)
+
+
+class SyncSecurityTests(unittest.TestCase):
+    def test_push_rejects_sensitive_variables_before_remote_calls(self) -> None:
+        cases = [
+            (
+                "postgresql://app:" + "LEAKME-url-password" + "@db.example/app",
+                {},
+            ),
+            (
+                "https://api.example/v1?client_" + "secret=LEAKME-query-secret",
+                {},
+            ),
+            (
+                "Server=db.example;Access" + "Token=LEAKME-dsn-token;Database=app",
+                {},
+            ),
+            ("hf_" + ("1" * 20), {}),
+            (
+                "prefix-required-ops-secret-value-suffix",
+                {"ops_token": "required-ops-secret-value"},
+            ),
+            (
+                "prefix-optional-provider-secret-suffix",
+                {"optional_token": "optional-provider-secret"},
+            ),
+            (
+                "prefix-local-project-control-suffix",
+                {
+                    "local_only": ["HF_TOKEN", "PROJECT_CONTROL"],
+                    "extra_env": ["PROJECT_CONTROL=local-project-control"],
+                },
+            ),
+        ]
+        for value, overrides in cases:
+            with self.subTest(value=value[:28]):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    arguments = {
+                        "ops_token": "required-ops-value",
+                        "optional_token": "optional-provider-value",
+                        "port_value": value,
+                        **overrides,
+                    }
+                    write_sync_fixture(root, **arguments)
+                    with (
+                        mock.patch.object(sync, "api_client") as api_client,
+                        mock.patch.object(sync, "bucket_cp") as bucket_copy,
+                        self.assertRaises(sync.SyncError) as caught,
+                    ):
+                        sync.cmd_push(root, False, False)
+                    api_client.assert_not_called()
+                    bucket_copy.assert_not_called()
+                    message = str(caught.exception)
+                    self.assertIn("PORT", message)
+                    self.assertNotIn("LEAKME", message)
+                    self.assertNotIn(value, message)
+
+    def test_secret_cannot_alias_custom_local_only_value(self) -> None:
+        cases = [
+            {
+                "required_secrets": ["OPS_TOKEN", "CONTROL_ALIAS"],
+                "optional_secrets": ["OPENAI_API_KEY"],
+            },
+            {
+                "required_secrets": ["OPS_TOKEN"],
+                "optional_secrets": ["OPENAI_API_KEY", "CONTROL_ALIAS"],
+            },
+        ]
+        for categories in cases:
+            with self.subTest(categories=categories):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    write_sync_fixture(
+                        root,
+                        ops_token="required-ops-value",
+                        optional_token="",
+                        local_only=["HF_TOKEN", "PROJECT_CONTROL"],
+                        extra_env=[
+                            "PROJECT_CONTROL=local-project-control",
+                            "CONTROL_ALIAS=local-project-control",
+                        ],
+                        **categories,
+                    )
+                    with (
+                        mock.patch.object(sync, "api_client") as api_client,
+                        self.assertRaises(sync.SyncError) as caught,
+                    ):
+                        sync.cmd_push(root, False, False)
+                    api_client.assert_not_called()
+                    message = str(caught.exception)
+                    self.assertIn("CONTROL_ALIAS", message)
+                    self.assertIn("PROJECT_CONTROL", message)
+                    self.assertNotIn("local-project-control", message)
+
+    def test_custom_local_only_value_is_protected_in_seed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_sync_fixture(
+                root,
+                ops_token="required-ops-value",
+                optional_token="",
+                local_only=["HF_TOKEN", "PROJECT_CONTROL"],
+                extra_env=["PROJECT_CONTROL=local-project-control"],
+            )
+            with (root / "hfs-dev.toml").open("a", encoding="utf-8") as manifest:
+                manifest.write(
+                    'seed_file = "config.toml"\nother_objects = ["config.toml"]\n'
+                )
+            (root / "config.toml").write_text(
+                'service_value = "local-project-control"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaises(sync.SyncError) as caught:
+                sync.preflight(root, for_push=True)
+            message = str(caught.exception)
+            self.assertIn("local-only:PROJECT_CONTROL", message)
+            self.assertNotIn("local-project-control", message)
+
+    def test_public_and_placeholder_urls_remain_valid_variables(self) -> None:
+        cases = [
+            "https://api.example/v1?format=json&mode=public",
+            "https://api.example/v1?api_" + "key=%3CSECRET%3E",
+            "postgresql://readonly@db.example/app?sslmode=require",
+        ]
+        for value in cases:
+            with self.subTest(value=value):
+                with tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    write_sync_fixture(
+                        root,
+                        ops_token="required-ops-value",
+                        optional_token="",
+                        port_value=value,
+                    )
+                    sync.preflight(root, for_push=True)
+
+    def test_pull_rejects_unsafe_components_before_bucket_read(self) -> None:
+        for kind in ("symlink", "file"):
+            for component in ("local", "hfs-sync-pulled", "QwenPaw-all-in-one-HFS-v2-candidate"):
+                with self.subTest(kind=kind, component=component):
+                    with (
+                        tempfile.TemporaryDirectory() as temporary,
+                        tempfile.TemporaryDirectory() as outside,
+                    ):
+                        root = Path(temporary)
+                        write_sync_fixture(
+                            root,
+                            ops_token="required-ops-value",
+                            optional_token="",
+                            mount_config=True,
+                        )
+                        parent = root
+                        for name in (
+                            "local",
+                            "hfs-sync-pulled",
+                            "QwenPaw-all-in-one-HFS-v2-candidate",
+                        ):
+                            path = parent / name
+                            if name == component:
+                                if kind == "symlink":
+                                    path.symlink_to(Path(outside), target_is_directory=True)
+                                else:
+                                    path.write_text("not a directory\n", encoding="utf-8")
+                                break
+                            path.mkdir(mode=0o700)
+                            parent = path
+                        with (
+                            mock.patch.object(
+                                sync,
+                                "api_client",
+                                return_value=FakeSpaceApi(set()),
+                            ),
+                            mock.patch.object(
+                                sync,
+                                "resolve_targets",
+                                return_value=(exporter.CANDIDATE_SPACE, "BlueSkyXN"),
+                            ),
+                            mock.patch.object(sync, "bucket_read_bytes") as bucket_read,
+                            self.assertRaisesRegex(sync.SyncError, "符号链接|目录"),
+                        ):
+                            sync.cmd_pull(root)
+                        bucket_read.assert_not_called()
+                        self.assertEqual(list(Path(outside).iterdir()), [])
+
+    def test_pull_rejects_unsafe_final_parent_before_bucket_read(self) -> None:
+        for kind in ("symlink", "file"):
+            with self.subTest(kind=kind):
+                with (
+                    tempfile.TemporaryDirectory() as temporary,
+                    tempfile.TemporaryDirectory() as outside,
+                ):
+                    root = Path(temporary)
+                    write_sync_fixture(
+                        root,
+                        ops_token="required-ops-value",
+                        optional_token="",
+                        mount_config=True,
+                    )
+                    base = (
+                        root
+                        / "local"
+                        / "hfs-sync-pulled"
+                        / "QwenPaw-all-in-one-HFS-v2-candidate"
+                    )
+                    base.mkdir(parents=True, mode=0o700)
+                    target = base / "20260730010101"
+                    if kind == "symlink":
+                        target.symlink_to(Path(outside), target_is_directory=True)
+                    else:
+                        target.write_text("not a directory\n", encoding="utf-8")
+                    with (
+                        mock.patch.object(
+                            sync,
+                            "api_client",
+                            return_value=FakeSpaceApi(set()),
+                        ),
+                        mock.patch.object(
+                            sync,
+                            "resolve_targets",
+                            return_value=(exporter.CANDIDATE_SPACE, "BlueSkyXN"),
+                        ),
+                        mock.patch.object(
+                            sync.time,
+                            "strftime",
+                            return_value="20260730010101",
+                        ),
+                        mock.patch.object(sync, "bucket_read_bytes") as bucket_read,
+                        self.assertRaisesRegex(sync.SyncError, "符号链接|目录"),
+                    ):
+                        sync.cmd_pull(root)
+                    bucket_read.assert_not_called()
+                    self.assertEqual(list(Path(outside).iterdir()), [])
+
+    def test_pull_rejects_final_parent_symlink_swap_after_bucket_read(self) -> None:
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            tempfile.TemporaryDirectory() as outside,
+        ):
+            root = Path(temporary)
+            outside_root = Path(outside)
+            write_sync_fixture(
+                root,
+                ops_token="required-ops-value",
+                optional_token="",
+                mount_config=True,
+            )
+
+            def replace_pull_dir(
+                _source: str,
+                _token: str,
+            ) -> tuple[bool, bytes]:
+                base = (
+                    root
+                    / "local"
+                    / "hfs-sync-pulled"
+                    / "QwenPaw-all-in-one-HFS-v2-candidate"
+                )
+                pull_dir = next(base.iterdir())
+                pull_dir.rmdir()
+                pull_dir.symlink_to(outside_root, target_is_directory=True)
+                return True, b"enabled = true\n"
+
+            with (
+                mock.patch.object(sync, "api_client", return_value=FakeSpaceApi(set())),
+                mock.patch.object(
+                    sync,
+                    "resolve_targets",
+                    return_value=(exporter.CANDIDATE_SPACE, "BlueSkyXN"),
+                ),
+                mock.patch.object(
+                    sync,
+                    "bucket_read_bytes",
+                    side_effect=replace_pull_dir,
+                ),
+                self.assertRaisesRegex(
+                    sync.SyncError,
+                    "符号链接|安全发布|校验期间被替换",
+                ),
+            ):
+                sync.cmd_pull(root)
+            self.assertFalse((outside_root / "config.toml").exists())
+            self.assertFalse(any(root.glob(".staging-*")))
+
+    def test_pull_writes_private_regular_file_without_staging_leftovers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_sync_fixture(
+                root,
+                ops_token="required-ops-value",
+                optional_token="",
+                mount_config=True,
+            )
+            with (
+                mock.patch.object(sync, "api_client", return_value=FakeSpaceApi(set())),
+                mock.patch.object(
+                    sync,
+                    "resolve_targets",
+                    return_value=(exporter.CANDIDATE_SPACE, "BlueSkyXN"),
+                ),
+                mock.patch.object(
+                    sync,
+                    "bucket_read_bytes",
+                    return_value=(True, b"enabled = true\n"),
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(sync.cmd_pull(root), 0)
+            pulled = list(
+                (
+                    root
+                    / "local"
+                    / "hfs-sync-pulled"
+                    / "QwenPaw-all-in-one-HFS-v2-candidate"
+                ).glob("*/config.toml")
+            )
+            self.assertEqual(len(pulled), 1)
+            self.assertEqual(pulled[0].read_bytes(), b"enabled = true\n")
+            self.assertEqual(stat.S_IMODE(pulled[0].stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(pulled[0].parent.stat().st_mode), 0o700)
+            self.assertFalse(any(root.rglob(".staging-*")))
+
+    def test_pull_rejects_space_slug_containment_escape(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            with self.assertRaisesRegex(sync.SyncError, "安全的单段名称|项目根"):
+                sync.unique_pull_dir(root, "example/../../outside")
+            self.assertFalse((root / "outside").exists())
 
 
 if __name__ == "__main__":
