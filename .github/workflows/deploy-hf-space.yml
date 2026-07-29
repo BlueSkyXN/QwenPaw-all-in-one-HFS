@@ -60,11 +60,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 scripts/export_space_bundle.py export \
+          python3 scripts/export_hfs_space_bundle.py export \
             --source-commit "$SOURCE_REF" \
-            --manifest hfs-dev.candidate.toml \
+            --profile candidate \
             --output "$RUNNER_TEMP/qwenpaw-candidate-bundle"
-          python3 scripts/export_space_bundle.py verify \
+          python3 scripts/export_hfs_space_bundle.py verify \
+            --profile candidate \
             --bundle "$RUNNER_TEMP/qwenpaw-candidate-bundle"
 
       - name: Install the pinned Hugging Face CLI
@@ -81,7 +82,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           test -n "${HF_TOKEN:-}" || { echo "HF_TOKEN environment Secret is required." >&2; exit 1; }
-          python3 scripts/export_space_bundle.py paths > "$RUNNER_TEMP/qwenpaw-candidate-paths"
+          python3 scripts/export_hfs_space_bundle.py paths --profile candidate > "$RUNNER_TEMP/qwenpaw-candidate-paths"
           python3 - <<'PY'
           from __future__ import annotations
 
@@ -148,7 +149,7 @@ jobs:
           set -Eeuo pipefail
           bundle="$RUNNER_TEMP/qwenpaw-candidate-bundle"
           readback="$RUNNER_TEMP/qwenpaw-candidate-readback"
-          python3 scripts/export_space_bundle.py paths > "$RUNNER_TEMP/qwenpaw-candidate-paths"
+          python3 scripts/export_hfs_space_bundle.py paths --profile candidate > "$RUNNER_TEMP/qwenpaw-candidate-paths"
           python3 - <<'PY'
           from __future__ import annotations
 
@@ -190,7 +191,7 @@ jobs:
 
           shutil.rmtree(Path(os.environ["READBACK"], ".cache"), ignore_errors=True)
           PY
-          python3 scripts/export_space_bundle.py verify --bundle "$readback"
+          python3 scripts/export_hfs_space_bundle.py verify --profile candidate --bundle "$readback"
           cmp "$bundle/BUILD_SOURCE.json" "$readback/BUILD_SOURCE.json"
           cmp "$bundle/SHA256SUMS" "$readback/SHA256SUMS"
 

@@ -180,7 +180,7 @@ QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
 
 Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
-## Candidate Bundle and Manual Deploy Workflow
+## Fixed-Profile Bundles and Manual Deploy Workflows
 
 Candidate repository publication uses `.github/workflows/deploy-hf-space.yml`; it never
 pushes the GitHub repository root directly. The workflow accepts only a 40-character
@@ -189,12 +189,21 @@ literal confirmation `PUBLISH_CANDIDATE`. It exports `hfs-dev.candidate.toml` as
 bundle's `hfs-dev.toml` and fixes the target to the existing private Space
 `BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`.
 
-The candidate bundle is an exact allowlist with `BUILD_SOURCE.json` and `SHA256SUMS`.
+`scripts/export_hfs_space_bundle.py` accepts only the `candidate` and `formal` enum profiles;
+neither profile accepts an owner, repository, manifest, or Space override. Both bundles use
+the same exact path allowlist with `BUILD_SOURCE.json` and `SHA256SUMS`.
 Before upload, the workflow refuses a non-private Space or any existing remote path outside
 that allowlist. It does not delete remote files, change Settings or volumes, restart the
 Space, or perform runtime smoke. Complete repository readback proves only the uploaded
 source bundle; runtime takeover, authenticated smoke, persistence, restart, backup, and
 restore remain separate release gates.
+
+Canonical publication uses `.github/workflows/deploy-hfs-formal.yml`, the `hfs-production`
+environment, an exact current GitHub `main` SHA, and `PUBLISH_FORMAL`. It fixes the target to
+the existing private `BlueSkyXN/QwenPaw-all-in-one-HFS`, uploads only the verified `formal`
+bundle, reads back the exact path set plus `BUILD_SOURCE.json` and `SHA256SUMS`, then requests
+a factory restart. The restart request is not runtime takeover, live smoke, or persistence
+evidence; those checks still run separately after the Space returns to `RUNNING`.
 
 ## Build
 
@@ -327,12 +336,13 @@ set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
-After pushing to both remotes, verify all three states independently:
+After a formal bundle publication, verify provenance and runtime state independently:
 
 ```text
-local HEAD == origin/main == hf/main
-Hugging Face repo sha == local HEAD
-Hugging Face runtime.raw.sha == local HEAD and runtime.stage == RUNNING
+local HEAD == origin/main == downloaded BUILD_SOURCE.wrapper_source_commit
+Hugging Face repo sha == Hugging Face runtime.raw.sha after takeover
+Hugging Face runtime.stage == RUNNING
+live/authenticated smoke and existing-account persistence passed
 ```
 
 Only then treat the Space as updated.

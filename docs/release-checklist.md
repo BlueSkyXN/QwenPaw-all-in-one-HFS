@@ -23,11 +23,11 @@ clean commit locally without contacting Hugging Face:
 source_ref=$(git rev-parse HEAD)
 bundle_dir=$(mktemp -d)
 test -z "$(git status --porcelain=v1 --untracked-files=all)"
-python3 scripts/export_space_bundle.py export \
+python3 scripts/export_hfs_space_bundle.py export \
   --source-commit "$source_ref" \
-  --manifest hfs-dev.candidate.toml \
+  --profile candidate \
   --output "$bundle_dir"
-python3 scripts/export_space_bundle.py verify --bundle "$bundle_dir"
+python3 scripts/export_hfs_space_bundle.py verify --profile candidate --bundle "$bundle_dir"
 ```
 
 Record the complete `BUILD_SOURCE.json` and `SHA256SUMS` readback as repository evidence;
@@ -161,12 +161,42 @@ persistence/restart/backup/restore: NOT RUN by this workflow
 Only after separately approved runtime checks may the candidate be described as deployed
 and accepted. A successful repository upload/readback alone is a publish result.
 
+## Formal GitHub Actions Gate
+
+The canonical repository-write workflow is `.github/workflows/deploy-hfs-formal.yml`.
+Before dispatch:
+
+- Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
+- Confirm `BlueSkyXN/QwenPaw-all-in-one-HFS` already exists with `private=true`.
+- Confirm the `hfs-production` environment exposes only the required `HF_TOKEN` deployment
+  Secret; never print its value.
+- Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_FORMAL`.
+
+The workflow must fail closed on SHA drift, a dirty checkout, static/contract failure,
+non-private visibility, any remote path outside the strict allowlist, bundle verification,
+checksum/provenance mismatch, or factory restart failure. It installs
+`huggingface_hub==1.5.0`, accepts no owner/repository/Space override, and does not create or
+delete repositories, sync Settings, or change volumes.
+
+After a green workflow, record these separate states:
+
+```text
+authorized GitHub main SHA == downloaded BUILD_SOURCE.wrapper_source_commit
+formal remote path set == exporter path allowlist
+formal remote BUILD_SOURCE.json and SHA256SUMS == uploaded verified bundle
+factory restart requested successfully
+runtime takeover: NOT PROVEN until repo sha == runtime.raw.sha and stage == RUNNING
+live/auth smoke: NOT RUN by this workflow
+existing-account persistence/backup/restore: NOT RUN by this workflow
+```
+
 ## GitHub/Hugging Face Closeout
 
-This direct two-remote closeout applies to canonical production. Do not push the GitHub root
-directly to the candidate Space.
+Canonical production closeout starts with a reviewed GitHub `main` commit and the formal
+workflow above. Do not push the repository root directly to either Space as a substitute for
+the fixed-profile exporter/readback contract.
 
-Before pushing:
+Before committing and publishing GitHub `main`:
 
 ```bash
 git status --short --branch
@@ -175,24 +205,18 @@ git check-ignore -v .env .env.local config.toml local/ .DS_Store
 
 Commit only tracked public files. Do not stage `.env`, `.env.local`, `config.toml`, `local/`, runtime data, logs or screenshots.
 
-Push:
+Push only the reviewed GitHub branch through the repository's normal delivery process; the
+formal workflow owns the canonical Hugging Face repository write.
 
 ```bash
 git push origin main
-git push hf main
 ```
 
-Confirm remote heads:
+Confirm the GitHub head and formal workflow:
 
 ```bash
 git rev-parse HEAD
 git ls-remote origin refs/heads/main
-git ls-remote hf refs/heads/main
-```
-
-Confirm GitHub Actions:
-
-```bash
 gh run list --repo BlueSkyXN/QwenPaw-all-in-one-HFS --branch main --limit 5
 ```
 
@@ -205,13 +229,15 @@ hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
 Done means:
 
 ```text
-HEAD == origin/main == hf/main
+HEAD == origin/main == downloaded BUILD_SOURCE.wrapper_source_commit
 GitHub static-check succeeded for HEAD
-Hugging Face repo sha == HEAD
-Hugging Face runtime.raw.sha == HEAD
+formal repository path/checksum/provenance readback passed
+factory restart request succeeded
+Hugging Face repo sha == Hugging Face runtime.raw.sha
 Hugging Face runtime.stage == RUNNING
 Storage Bucket is mounted read-write at /data
-live smoke passed
+live/authenticated smoke passed
+existing account/config remains present after the restart
 worktree has no uncommitted tracked changes
 ```
 

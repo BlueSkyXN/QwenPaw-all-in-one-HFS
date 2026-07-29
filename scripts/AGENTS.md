@@ -3,7 +3,7 @@
 Maintainer automation for validation, local Docker build/run, and Space smoke checks. Read
 this card before changing any script or moving validation logic.
 Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py`, `build-console-bundle.sh`,
-`export_space_bundle.py`, `hf_space_sync.py`, `test_release_tools.py`,
+`export_hfs_space_bundle.py`, `export_space_bundle.py`, `hf_space_sync.py`, `test_release_tools.py`,
 `test_runtime_helpers.py`, `hf-space-smoke.sh`, `admin-smoke.sh`, `local-build.sh`, `local-run.sh`.
 
 ## Local invariants
@@ -22,9 +22,10 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
   not make it part of the default no-network static gate.
 - `build-console-bundle.sh` must build only an immutable upstream commit, verify its source
   version, and emit a checksum beside the bundle. It must not publish artifacts itself.
-- `export_space_bundle.py` must read its exact allowlist from a clean immutable commit,
-  normalize only `hfs-dev.candidate.toml` to the exported `hfs-dev.toml`, reject production
-  Space target leaks, and verify complete checksums. It must never perform remote actions.
+- `export_hfs_space_bundle.py` must accept only the fixed `candidate` and `formal` profiles,
+  read the selected manifest and exact allowlist from a clean immutable commit, and verify
+  complete provenance/checksums. It must never accept arbitrary owner/repo inputs or perform
+  remote actions. `export_space_bundle.py` is only the fixed-candidate compatibility CLI.
 - `hf_space_sync.py` requires all registered Variables and required Secrets. Registered
   optional Secrets may be empty; only non-empty values are pushed and required on readback,
   while prune retains registered optional remote names.
@@ -47,8 +48,8 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
   endpoints are broken.
 - Do not make scripts mutate remotes, deploy, or delete local data unless the user asked for
   that operation and the command name clearly signals it.
-- Do not broaden the candidate bundle allowlist to include docs, CI, local material, value
-  ledgers, the production manifest, or repository control files.
+- Do not broaden either bundle allowlist to include docs, CI, local material, value ledgers,
+  the unselected manifest, or repository control files.
 
 ## Validation
 

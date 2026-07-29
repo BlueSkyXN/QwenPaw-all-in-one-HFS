@@ -43,9 +43,10 @@ set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
-Closeout is not just a successful `git push`. Confirm `HEAD`, `origin/main`, `hf/main`,
-Hugging Face repo `sha`, Hugging Face `runtime.raw.sha`, the `/data` Storage Bucket
-volume, and endpoint smoke all agree.
+Closeout is not just a successful repository write. Confirm GitHub `HEAD == origin/main ==`
+the downloaded `BUILD_SOURCE.wrapper_source_commit`, confirm Hugging Face repo `sha ==`
+`runtime.raw.sha` after takeover, and separately verify the `/data` Storage Bucket volume,
+existing-account persistence, and endpoint smoke.
 
 ## What Belongs In Docs
 

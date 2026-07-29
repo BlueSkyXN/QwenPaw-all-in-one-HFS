@@ -92,7 +92,11 @@ Check:
 hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
 ```
 
-Compare `sha` and `runtime.raw.sha` with local `git rev-parse HEAD`. The Space repo can update before runtime takeover. Wait for `runtime.stage=RUNNING` and `runtime.raw.sha == HEAD`.
+For fixed-profile publication, compare the downloaded `BUILD_SOURCE.wrapper_source_commit`
+with the authorized GitHub SHA, then compare the Hugging Face repo `sha` with
+`runtime.raw.sha`. The Space repo can update before runtime takeover. Wait for
+`runtime.stage=RUNNING` and `runtime.raw.sha == sha`; the Hugging Face commit is distinct from
+the GitHub wrapper commit recorded in provenance.
 
 ### `/healthz` returns 503
 

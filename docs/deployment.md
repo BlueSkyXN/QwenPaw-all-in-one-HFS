@@ -39,16 +39,18 @@ instead:
 ```bash
 source_ref=$(git rev-parse HEAD)
 bundle_dir=$(mktemp -d)
-python3 scripts/export_space_bundle.py export \
+python3 scripts/export_hfs_space_bundle.py export \
   --source-commit "$source_ref" \
-  --manifest hfs-dev.candidate.toml \
+  --profile candidate \
   --output "$bundle_dir"
-python3 scripts/export_space_bundle.py verify \
+python3 scripts/export_hfs_space_bundle.py verify \
+  --profile candidate \
   --bundle "$bundle_dir"
-python3 scripts/export_space_bundle.py paths
+python3 scripts/export_hfs_space_bundle.py paths --profile candidate
 ```
 
-The exporter requires a clean checkout whose `HEAD` exactly matches the lowercase
+The exporter accepts only the fixed `candidate` and `formal` enum profiles and requires a
+clean checkout whose `HEAD` exactly matches the lowercase
 40-character `source_ref`. Every source input is read from that commit. The exported
 `hfs-dev.toml` comes from `hfs-dev.candidate.toml`; the Space-card Hugging Face links are
 candidate-specific while GitHub source and release-asset URLs remain unchanged.
@@ -159,8 +161,8 @@ This section describes the canonical production Space and its separately approve
 release gate. It is not the candidate workflow above. A local semantic-manifest change does
 not publish to a remote, update Space Settings, or cause Space takeover.
 
-1. Create a Docker Space.
-2. Push this repository root only to the canonical production Space repository.
+1. Confirm the fixed canonical Docker Space already exists with `private=true`.
+2. Publish only the verified `formal` profile through the protected manual workflow.
 3. Attach a private Storage Bucket read-write at `/data` if runtime data must survive
    restarts/rebuilds.
 4. Set Variables/Secrets from `docs/configuration.md`.
@@ -169,54 +171,46 @@ not publish to a remote, update Space Settings, or cause Space takeover.
 
 GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Execute them only as an explicitly approved release operation; treat the Space as available only after live smoke passes.
 
-## Production Manual Push Flow
+## Formal Production Workflow
 
-Do not use this direct-root flow for the candidate Space. Candidate publication must use the
-verified exporter/workflow so `hfs-dev.candidate.toml` is normalized to the image's
-`hfs-dev.toml`.
-
-Expected remotes:
-
-```bash
-git remote -v
-```
+`.github/workflows/deploy-hfs-formal.yml` is the reviewed canonical repository-write path.
+It does not accept owner, repository, manifest, or Space inputs. Dispatch it from GitHub
+`main` with:
 
 ```text
-origin  https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS.git
-hf      https://huggingface.co/spaces/BlueSkyXN/QwenPaw-all-in-one-HFS
+source_ref=<exact current GitHub main SHA>
+confirm_upload=PUBLISH_FORMAL
 ```
 
-Push both remotes:
+The `hfs-production` GitHub environment must expose `HF_TOKEN`. The workflow requires
+`source_ref == GITHUB_SHA == origin/main`, runs the static gate, and exports only
+`--profile formal`. The profile fixes `hfs-dev.toml`, the wrapper source repository, and
+the existing private `BlueSkyXN/QwenPaw-all-in-one-HFS` target. Before upload it rejects
+remote paths outside the strict allowlist. After upload it downloads and verifies the exact
+path set, compares `BUILD_SOURCE.json` and `SHA256SUMS`, binds readback provenance to the
+authorized GitHub SHA, and only then requests `factory_reboot=True`.
 
-```bash
-git push origin main
-git push hf main
-```
-
-Confirm branch heads:
-
-```bash
-git rev-parse HEAD
-git ls-remote origin refs/heads/main
-git ls-remote hf refs/heads/main
-```
-
-All three SHAs must match.
+The workflow does not create a Space, delete remote files, sync Settings, or change volumes.
+Its successful factory-restart request is not proof that the rebuilt runtime reached
+`RUNNING`, preserved existing accounts, or passed live smoke.
 
 ## Runtime Takeover
 
-After `git push hf main`, the Space repository `sha` can update before the running container does. Check runtime takeover explicitly:
+After the formal workflow uploads and requests a factory restart, the Space repository `sha`
+can update before the running container does. Check runtime takeover explicitly:
 
 ```bash
 hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
 ```
 
-Deployment is not complete until:
+The GitHub source SHA is carried by the downloaded `BUILD_SOURCE.wrapper_source_commit`; the
+Hugging Face repository creates its own commit SHA. Deployment is not complete until:
 
 ```text
-repo sha == HEAD
+downloaded BUILD_SOURCE.wrapper_source_commit == authorized GitHub main SHA
+repo sha == runtime.raw.sha
 runtime.stage == RUNNING
-runtime.raw.sha == HEAD
+live/authenticated smoke passed
 ```
 
 `RUNNING_BUILDING` and `RUNNING_APP_STARTING` are transitional states. Keep polling until `RUNNING` and the runtime SHA has switched.
