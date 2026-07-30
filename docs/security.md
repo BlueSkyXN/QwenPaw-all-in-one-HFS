@@ -19,7 +19,8 @@ username/password as a real deployment credential:
 - Keep it in the local `.env` ledger or a password manager, not in git.
 - Do not place it in screenshots, PR descriptions, issue comments or public logs.
 - If the `Create Account` screen reappears unexpectedly, confirm the `/data` volume with
-  `hf spaces volumes list` before creating another account.
+  `python3 -m huggingface_hub.cli.hf spaces info <space-id> --expand runtime` and the
+  authenticated `/_ops/persistence` readback before creating another account.
 
 ### Reverse Proxy Boundary
 

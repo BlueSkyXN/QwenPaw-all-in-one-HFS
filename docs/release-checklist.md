@@ -23,11 +23,11 @@ clean commit locally without contacting Hugging Face:
 source_ref=$(git rev-parse HEAD)
 bundle_dir=$(mktemp -d)
 test -z "$(git status --porcelain=v1 --untracked-files=all)"
-python3 scripts/export_space_bundle.py export \
+python3 scripts/export_hfs_space_bundle.py export \
   --source-commit "$source_ref" \
-  --manifest hfs-dev.candidate.toml \
+  --profile candidate \
   --output "$bundle_dir"
-python3 scripts/export_space_bundle.py verify --bundle "$bundle_dir"
+python3 scripts/export_hfs_space_bundle.py verify --profile candidate --bundle "$bundle_dir"
 ```
 
 Record the complete `BUILD_SOURCE.json` and `SHA256SUMS` readback as repository evidence;
@@ -39,7 +39,7 @@ and backup path in the local deployment ledger, not in Git:
 
 ```bash
 RELEASE_BACKUP_ID="pre-upgrade-$(date -u +%Y%m%dT%H%M%SZ)"
-hf buckets cp \
+python3 -m huggingface_hub.cli.hf buckets cp \
   "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/working/" \
   "hf://buckets/$HF_STORAGE_BUCKET/qwenpaw/backups/$RELEASE_BACKUP_ID/working/"
 ```
@@ -108,8 +108,8 @@ docker exec qwenpaw-hfs-release test -f /data/qwenpaw/working/config.json
 
 - Confirm Space build succeeded.
 - Confirm runtime takeover completed.
-- Confirm `hf spaces volumes list <space-id> --json` reports a read-write Storage Bucket
-  mounted at `/data`.
+- Confirm `python3 -m huggingface_hub.cli.hf spaces info <space-id> --expand runtime`
+  reports a read-write Storage Bucket mounted at `/data`.
 - Run live smoke.
 - Confirm `/_ops/version` reports expected release pins.
 - Confirm `/readyz` reports upstream QwenPaw core-agent readiness, not only an open TCP port; verify a real app/API path after later background startup work settles.
@@ -120,10 +120,16 @@ For a live persistence drill, record the bucket-side config object, restart the 
 and compare it after takeover:
 
 ```bash
-hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
-hf spaces restart "$HF_SPACE_ID"
-hf spaces wait "$HF_SPACE_ID" --timeout 15m
-hf buckets list "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --json
+python3 -m huggingface_hub.cli.hf buckets list \
+  "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --recursive --format json
+python3 - <<'PY'
+import os
+from huggingface_hub import HfApi
+HfApi(token=os.environ.get("HF_TOKEN")).restart_space(os.environ["HF_SPACE_ID"])
+PY
+python3 -m huggingface_hub.cli.hf spaces info "$HF_SPACE_ID" --expand runtime
+python3 -m huggingface_hub.cli.hf buckets list \
+  "$HF_STORAGE_BUCKET/qwenpaw/working/config.json" --recursive --format json
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
@@ -161,12 +167,42 @@ persistence/restart/backup/restore: NOT RUN by this workflow
 Only after separately approved runtime checks may the candidate be described as deployed
 and accepted. A successful repository upload/readback alone is a publish result.
 
+## Formal GitHub Actions Gate
+
+The canonical repository-write workflow is `.github/workflows/deploy-hfs-formal.yml`.
+Before dispatch:
+
+- Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
+- Confirm `BlueSkyXN/QwenPaw-all-in-one-HFS` already exists as Protected.
+- Confirm the `hfs-production` environment exposes only the required `HF_TOKEN` deployment
+  Secret; never print its value.
+- Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_FORMAL`.
+
+The workflow must fail closed on SHA drift, a dirty checkout, static/contract failure,
+non-public visibility, any remote path outside the strict allowlist, bundle verification,
+checksum/provenance mismatch, or factory restart failure. It installs
+`huggingface_hub==1.25.1` with `click==8.4.2`, accepts no owner/repository/Space override, and does not create or
+delete repositories, sync Settings, or change volumes.
+
+After a green workflow, record these separate states:
+
+```text
+authorized GitHub main SHA == downloaded BUILD_SOURCE.wrapper_source_commit
+formal remote path set == exporter path allowlist
+formal remote BUILD_SOURCE.json and SHA256SUMS == uploaded verified bundle
+factory restart requested successfully
+runtime takeover: NOT PROVEN until repo sha == runtime.raw.sha and stage == RUNNING
+live/auth smoke: NOT RUN by this workflow
+existing-account persistence/backup/restore: NOT RUN by this workflow
+```
+
 ## GitHub/Hugging Face Closeout
 
-This direct two-remote closeout applies to the canonical Preview Space. Do not push the GitHub root
-directly to the candidate Space.
+Canonical Preview closeout starts with a reviewed GitHub `main` commit and the formal
+workflow above. Do not push the repository root directly to either Space as a substitute for
+the fixed-profile exporter/readback contract.
 
-Before pushing:
+Before committing and publishing GitHub `main`:
 
 ```bash
 git status --short --branch
@@ -175,43 +211,40 @@ git check-ignore -v .env .env.local config.toml local/ .DS_Store
 
 Commit only tracked public files. Do not stage `.env`, `.env.local`, `config.toml`, `local/`, runtime data, logs or screenshots.
 
-Push:
+Push only the reviewed GitHub branch through the repository's normal delivery process; the
+formal workflow owns the canonical Hugging Face repository write.
 
 ```bash
 git push origin main
-git push hf main
 ```
 
-Confirm remote heads:
+Confirm the GitHub head and formal workflow:
 
 ```bash
 git rev-parse HEAD
 git ls-remote origin refs/heads/main
-git ls-remote hf refs/heads/main
-```
-
-Confirm GitHub Actions:
-
-```bash
 gh run list --repo BlueSkyXN/QwenPaw-all-in-one-HFS --branch main --limit 5
 ```
 
 Confirm Hugging Face runtime:
 
 ```bash
-hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --json
+python3 -m huggingface_hub.cli.hf spaces info \
+  BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private
 ```
 
 Done means:
 
 ```text
-HEAD == origin/main == hf/main
+HEAD == origin/main == downloaded BUILD_SOURCE.wrapper_source_commit
 GitHub static-check succeeded for HEAD
-Hugging Face repo sha == HEAD
-Hugging Face runtime.raw.sha == HEAD
+formal repository path/checksum/provenance readback passed
+factory restart request succeeded
+Hugging Face repo sha == Hugging Face runtime.raw.sha
 Hugging Face runtime.stage == RUNNING
 Storage Bucket is mounted read-write at /data
-live smoke passed
+live/authenticated smoke passed
+existing account/config remains present after the restart
 worktree has no uncommitted tracked changes
 ```
 

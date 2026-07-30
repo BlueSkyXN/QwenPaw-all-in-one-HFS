@@ -3,7 +3,7 @@
 This directory contains GitHub Actions workflow configuration. Read this card before
 modifying workflow triggers, jobs, permissions, or validation commands.
 Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`,
-`workflows/deploy-hf-space.yml`.
+`workflows/deploy-hf-space.yml`, `workflows/deploy-hfs-formal.yml`.
 
 ## Why this is high-risk
 
@@ -27,6 +27,10 @@ Key files: `workflows/static-check.yml`, `workflows/build-console-bundle.yml`,
   upload only the verified exporter allowlist, and read back the exact path/checksum set.
 - Candidate repo upload is not runtime takeover or smoke evidence. The deploy workflow must
   not sync Settings, change volumes/visibility, restart lifecycle state, or delete remote files.
+- The manual formal workflow must use `hfs-production`, accept only an exact current GitHub
+  `main` SHA plus `PUBLISH_FORMAL`, target the fixed existing private canonical Space, and
+  upload only the verified `formal` profile. It must complete exact path/checksum/provenance
+  readback before requesting `factory_reboot=True`; live smoke and persistence remain separate.
 
 ## Required before changes
 

@@ -103,14 +103,17 @@ runtime data as durable. Without that volume, `/data` belongs to the ephemeral S
 container and is lost on restart, rebuild or stop.
 
 ```bash
-hf buckets create <namespace>/<bucket-name> --private --exist-ok
-hf spaces volumes set <namespace>/<space-name> \
-  -v hf://buckets/<namespace>/<bucket-name>:/data
-hf spaces volumes list <namespace>/<space-name> --json
+python3 -m huggingface_hub.cli.hf buckets create \
+  <namespace>/<bucket-name> --private --exist-ok
+python3 -m huggingface_hub.cli.hf spaces info \
+  <namespace>/<space-name> --expand runtime
 ```
 
-`hf spaces volumes set` replaces the complete volume list. When a Space already has
-other mounts, repeat every required `-v` argument in the same command.
+The repository workflows do not mutate Space volumes. Attach the bucket through the reviewed
+HFS provisioner or Hugging Face Settings, then
+use the `spaces info --expand runtime` readback above to verify the `/data` mount. A
+volume update replaces the complete mount list, so the provisioner must submit every
+required mount rather than only the new bucket.
 
 ```text
 /data/qwenpaw/working      QwenPaw config, memory, skills and runtime state
@@ -193,7 +196,7 @@ QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
 
 Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
-## Candidate Bundle and Manual Deploy Workflow
+## Fixed-Profile Bundles and Manual Deploy Workflows
 
 This candidate flow is optional for high-risk Preview changes. Routine Preview work may update
 the canonical Space directly and does not have to pass through this workflow first.
@@ -205,12 +208,21 @@ literal confirmation `PUBLISH_CANDIDATE`. It exports `hfs-dev.candidate.toml` as
 bundle's `hfs-dev.toml` and fixes the target to the existing private Space
 `BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`.
 
-The candidate bundle is an exact allowlist with `BUILD_SOURCE.json` and `SHA256SUMS`.
+`scripts/export_hfs_space_bundle.py` accepts only the `candidate` and `formal` enum profiles;
+neither profile accepts an owner, repository, manifest, or Space override. Both bundles use
+the same exact path allowlist with `BUILD_SOURCE.json` and `SHA256SUMS`.
 Before upload, the workflow refuses a non-private Space or any existing remote path outside
 that allowlist. It does not delete remote files, change Settings or volumes, restart the
 Space, or perform runtime smoke. Complete repository readback proves only the uploaded
 source bundle; runtime takeover, authenticated smoke, persistence, restart, backup, and
 restore remain separate release gates.
+
+Canonical publication uses `.github/workflows/deploy-hfs-formal.yml`, the `hfs-production`
+environment, an exact current GitHub `main` SHA, and `PUBLISH_FORMAL`. It fixes the target to
+the existing private `BlueSkyXN/QwenPaw-all-in-one-HFS`, uploads only the verified `formal`
+bundle, reads back the exact path set plus `BUILD_SOURCE.json` and `SHA256SUMS`, then requests
+a factory restart. The restart request is not runtime takeover, live smoke, or persistence
+evidence; those checks still run separately after the Space returns to `RUNNING`.
 
 ## Build
 
@@ -343,12 +355,13 @@ set +a
 bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"
 ```
 
-After pushing to both remotes, verify all three states independently:
+After a formal bundle publication, verify provenance and runtime state independently:
 
 ```text
-local HEAD == origin/main == hf/main
-Hugging Face repo sha == local HEAD
-Hugging Face runtime.raw.sha == local HEAD and runtime.stage == RUNNING
+local HEAD == origin/main == downloaded BUILD_SOURCE.wrapper_source_commit
+Hugging Face repo sha == Hugging Face runtime.raw.sha after takeover
+Hugging Face runtime.stage == RUNNING
+live/authenticated smoke and existing-account persistence passed
 ```
 
 Only then treat the Space as updated.
