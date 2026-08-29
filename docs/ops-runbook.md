@@ -169,9 +169,9 @@ When `ADMIN_ENABLED=true`, verify the control plane with:
 
 ```bash
 ADMIN_EXPECTED_ENABLED=true \
-ADMIN_TOKEN=$ADMIN_TOKEN \
+ADMIN_PASSWORD=$ADMIN_PASSWORD \
 ADMIN_CSRF_TOKEN=$ADMIN_CSRF_TOKEN \
 bash scripts/admin-smoke.sh "$SMOKE_BASE_URL"
 ```
 
-The smoke checks root access, token failures, `/_admin/api/status`, `/_admin/api/actions`, `/_admin/api/audit`, CSRF enforcement and `confirm=true`. It does not execute `run-health-checks` unless `ADMIN_SMOKE_ACTIONS=true`.
+The smoke checks root access, token failures, `/_admin/api/status`, `/_admin/api/actions`, `/_admin/api/audit`, CSRF enforcement and `confirm=true`. It does not execute `run-health-checks` unless `SMOKE_ADMIN_ACTIONS=true`.

@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate
+  CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate
   HF_CLI_VERSION: "1.25.1"
   HF_CLI_CLICK_VERSION: "8.4.2"
 

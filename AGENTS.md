@@ -93,7 +93,7 @@ additional commands without checking real files first.
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m py_compile docker/prepare_runtime_config.py docker/ops_service.py docker/admin_service.py scripts/check-qwenpaw-pins.py scripts/test_runtime_helpers.py` | Targeted Python syntax check for runtime config, ops/admin, tests, and release pin checker edits. | `docker/`, `scripts/` | Covered by `scripts/static-check.sh`. Remove any generated `__pycache__` if run without `PYTHONDONTWRITEBYTECODE=1`. |
 | `bash scripts/local-build.sh` | Build local Docker image `qwenpaw-all-in-one-hfs:dev` by default. | repo | Requires Docker daemon and network/package downloads during image build. Not a default sandbox check. |
 | `OPS_TOKEN=dev-ops-token bash scripts/local-run.sh` | Run the local Docker container on port `7860`. | repo | Requires Docker daemon, local image, interactive container runtime, and port availability. |
-| `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` or `QWENPAW_OPS_TOKEN` is set. |
+| `OPS_TOKEN=dev-ops-token bash scripts/hf-space-smoke.sh http://127.0.0.1:7860` | Smoke a running local container. | repo/runtime | Requires a running container or service at the target URL. Protected `/_ops` checks run only when `OPS_TOKEN` is set. |
 | `ADMIN_EXPECTED_ENABLED=false bash scripts/admin-smoke.sh http://127.0.0.1:7860` | Smoke the default disabled admin boundary on a running local container. | repo/runtime | Requires a running container or service at the target URL. Mutating admin actions run only when explicitly enabled by env. |
 | `bash scripts/hf-space-smoke.sh "$SMOKE_BASE_URL"` | Smoke a deployed Hugging Face Space. | live Space | Requires network, a reachable Space URL, and usually `OPS_TOKEN` from local/private environment. Do not paste real tokens into public logs or commits. |
 | `python3 -m huggingface_hub.cli.hf spaces info BlueSkyXN/QwenPaw-all-in-one-HFS --expand sha,runtime,private` | Inspect Hugging Face repo/runtime state during release closeout with the pinned module CLI. | live Space | Requires network and configured Hugging Face authentication. Use only for requested release/deployment verification. |
@@ -108,7 +108,8 @@ additional commands without checking real files first.
   exporter must normalize it to bundle-root `hfs-dev.toml`; never push the GitHub root
   directly to the candidate Space.
 - `OPS_TOKEN` is required. Admin, provider, and channel Secrets remain registered optional
-  values: empty local entries are not pushed or treated as missing and are retained by prune.
+  values. A remote-only optional Secret is drift; normal push refuses it and an explicitly
+  approved `--prune --yes` deletes it.
 - Candidate deployment automation may write only the verified repository bundle to the fixed
   existing private candidate after exact-main and confirmation gates. Settings, visibility,
   volumes, lifecycle, runtime smoke, persistence, and cleanup are separate operations.

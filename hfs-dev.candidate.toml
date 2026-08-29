@@ -1,6 +1,6 @@
-standard = "2.1"
+standard = "3.0"
 project = "qwenpaw-all-in-one-hfs"
-space = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
+space = "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate"
 project_class = "preview"
 target_role = "candidate"
 space_visibility = "protected"
@@ -9,7 +9,6 @@ sovereignty = "port"
 lane = "source"
 version_source = "commit"
 env_file = "local/hfs-targets/candidate.env"
-secret_files = []
 
 # Values stay in the ignored local .env ledger; these names are never synced to Space.
 local_only = [
@@ -21,10 +20,8 @@ local_only = [
   "HF_PUBLIC_URL",
   "HF_STORAGE_BUCKET",
   "SMOKE_BASE_URL",
-  "QWENPAW_ADMIN_USERNAME",
-  "QWENPAW_ADMIN_PASSWORD",
   "ADMIN_EXPECTED_ENABLED",
-  "ADMIN_SMOKE_ACTIONS",
+  "SMOKE_ADMIN_ACTIONS",
 ]
 
 # Values are configured as Hugging Face Space Secrets.
@@ -32,10 +29,10 @@ secrets = [
   "OPS_TOKEN",
 ]
 
-# Values are optional Hugging Face Space Secrets. Non-empty local values are synced;
-# empty values leave any existing remote Secret unchanged.
+# Values are optional Hugging Face Space Secrets. Non-empty local values are synced.
+# A remote-only optional Secret is drift: recover its local value or prune it explicitly.
 optional_secrets = [
-  "ADMIN_TOKEN",
+  "ADMIN_PASSWORD",
   "ADMIN_CSRF_TOKEN",
   "DASHSCOPE_API_KEY",
   "OPENAI_API_KEY",
@@ -46,6 +43,7 @@ optional_secrets = [
 
 # Values are configured as Hugging Face Space Variables.
 variables = [
+  "ADMIN_USERNAME",
   "PORT",
   "QWENPAW_PORT",
   "QWENPAW_WORKING_DIR",

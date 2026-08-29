@@ -35,7 +35,7 @@ git diff --check
 ## Candidate Bundle Contract
 
 When explicitly selected, the candidate Space is fixed at
-`BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`. Do not push this GitHub repository root
+`BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate`. Do not push this GitHub repository root
 directly to that Space: the root Dockerfile copies `hfs-dev.toml`, whose normal checkout
 profile targets the canonical Preview Space. Export the reviewed candidate profile into an exact bundle
 instead:
@@ -81,17 +81,19 @@ Sync candidate Settings separately from the ignored local ledger when that opera
 explicitly approved:
 
 ```bash
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml
-python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.candidate.toml
+python3 scripts/hfs_dev.py push --manifest hfs-dev.candidate.toml
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.candidate.toml
 ```
 
 The candidate manifest fixes the plaintext ledger at
 `local/hfs-targets/candidate.env`; it must not reuse canonical `.env` values implicitly.
 
-An empty registered optional Secret is not pushed, does not count as missing, and is not
-deleted by `--prune --yes`. A configured optional Secret is subject to the same placeholder,
-seed-scan, push, and name-readback safeguards as `OPS_TOKEN`.
+An empty registered optional Secret is not pushed and does not count as a missing required
+Secret. If the same name exists remotely without local plaintext, `diff` reports drift, normal
+`push` refuses the write, and an explicitly approved `--prune --yes` deletes it. A configured
+optional Secret is subject to the same placeholder, seed-scan, push, and name-readback safeguards
+as `OPS_TOKEN`.
 
 ## Local Build
 
@@ -259,8 +261,8 @@ On a fresh attached `/data` volume, QwenPaw shows `Create Account`. Use the brow
 create the first admin account only with credentials stored in local `.env`:
 
 ```env
-QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
-QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
+ADMIN_USERNAME=<local-test-admin-name>
+ADMIN_PASSWORD=<local-test-admin-password>
 ```
 
 Successful verification reaches `/chat` and shows `Logout`. Store screenshots under `local/`; they are local-only and ignored.

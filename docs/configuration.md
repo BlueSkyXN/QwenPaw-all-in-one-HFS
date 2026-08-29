@@ -7,7 +7,7 @@ Configuration is split into four surfaces:
 - Hugging Face Space Secrets, which are sensitive runtime values.
 - The ignored local `.env` HFS value ledger, which records local control, deployment, and private smoke/login values.
 
-`hfs-dev.toml` is the semantic HFS v2.1 registry for these surfaces: it records the Preview
+`hfs-dev.toml` is the semantic HFS v3.0 registry for these surfaces: it records the Preview
 classification, target role, key names, and local source paths only. It contains no values,
 build pins, seed configuration, mount configuration, or bucket configuration. `.env.local`
 remains ignored for compatibility with local Docker/run workflows, but `.env` is the canonical
@@ -84,7 +84,7 @@ unconditionally required Secrets from registered optional Secrets:
 
 ```env
 OPS_TOKEN=<required for protected /_ops endpoints>
-ADMIN_TOKEN=<required if ADMIN_ENABLED=true>
+ADMIN_PASSWORD=<required if ADMIN_ENABLED=true>
 ADMIN_CSRF_TOKEN=<required for admin mutating endpoints if ADMIN_ENABLED=true>
 DASHSCOPE_API_KEY=<optional>
 OPENAI_API_KEY=<optional>
@@ -94,7 +94,7 @@ DISCORD_BOT_TOKEN=<optional>
 ```
 
 `hfs-dev.toml` and `hfs-dev.candidate.toml` classify only `OPS_TOKEN` under `secrets`.
-`ADMIN_TOKEN`, `ADMIN_CSRF_TOKEN`, provider API keys, and channel bot tokens are under
+`ADMIN_PASSWORD`, `ADMIN_CSRF_TOKEN`, provider API keys, and channel bot tokens are under
 `optional_secrets`. Admin credentials are conditionally required when
 `ADMIN_ENABLED=true`; provider/channel values are required only for the integrations in
 use.
@@ -111,9 +111,9 @@ Use the canonical Preview manifest for routine Settings `diff → push → readb
 selects `.env` from the manifest:
 
 ```bash
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
-python3 scripts/hf_space_sync.py push --manifest hfs-dev.toml
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.toml
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.toml
+python3 scripts/hfs_dev.py push --manifest hfs-dev.toml
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.toml
 ```
 
 For an explicitly chosen high-risk candidate check, use `--manifest hfs-dev.candidate.toml`;
@@ -129,8 +129,8 @@ Settings sync applies these fail-closed rules:
 - `OPS_TOKEN` and every registered Variable must have a non-empty, non-placeholder local value.
 - Optional Secrets may be missing or empty. A non-empty optional value is rejected if it is a placeholder.
 - `push` writes only required Secrets and optional Secrets with a non-empty local value.
-- `diff` does not report an unconfigured optional Secret as missing.
-- `--prune --yes` retains a registered optional remote Secret when its local value is empty; it deletes only unregistered remote names.
+- `diff` reports a remote optional Secret with no local plaintext as drift.
+- Normal `push` refuses remote Secrets that lack local plaintext; `--prune --yes` deletes them explicitly.
 - Seed scanning includes every registered Secret that has a non-empty local value, regardless of whether it is required or optional.
 
 ```bash
@@ -153,12 +153,12 @@ Suggested local-only control values, secrets, and test records:
 
 ```env
 OPS_TOKEN=<same value configured in Hugging Face Space Settings>
-ADMIN_TOKEN=<only when ADMIN_ENABLED=true>
+ADMIN_PASSWORD=<only when ADMIN_ENABLED=true>
 ADMIN_CSRF_TOKEN=<only when ADMIN_ENABLED=true>
 ADMIN_EXPECTED_ENABLED=<true only for admin smoke>
-ADMIN_SMOKE_ACTIONS=<true only when run-health-checks should execute>
-QWENPAW_ADMIN_USERNAME=<first-run browser test username>
-QWENPAW_ADMIN_PASSWORD=<first-run browser test password>
+SMOKE_ADMIN_ACTIONS=<true only when run-health-checks should execute>
+ADMIN_USERNAME=<first-run browser test username>
+ADMIN_PASSWORD=<first-run browser test password>
 ```
 
 Do not commit `.env`, `.env.local`, `config.toml`, key files, database files, screenshots, runtime exports or logs.

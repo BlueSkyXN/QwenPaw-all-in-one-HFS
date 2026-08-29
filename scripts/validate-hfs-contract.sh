@@ -77,7 +77,7 @@ require_file docker/healthcheck.sh
 require_file scripts/admin-smoke.sh
 require_file scripts/check-qwenpaw-pins.py
 require_file scripts/hf-space-smoke.sh
-require_file scripts/hf_space_sync.py
+require_file scripts/hfs_dev.py
 require_file scripts/export_hfs_space_bundle.py
 require_file scripts/export_space_bundle.py
 require_file scripts/test_release_tools.py
@@ -99,7 +99,7 @@ raw = manifest_path.read_text(encoding="utf-8")
 manifest = tomllib.loads(raw)
 
 expected_scalars = {
-    "standard": "2.1",
+    "standard": "3.0",
     "project": "qwenpaw-all-in-one-hfs",
     "space": "BlueSkyXN/QwenPaw-all-in-one-HFS",
     "project_class": "preview",
@@ -112,7 +112,6 @@ expected_scalars = {
     "env_file": ".env",
 }
 expected_lists = {
-    "secret_files": set(),
     "local_only": {
         "GH_TOKEN",
         "HF_TOKEN",
@@ -122,16 +121,14 @@ expected_lists = {
         "HF_PUBLIC_URL",
         "HF_STORAGE_BUCKET",
         "SMOKE_BASE_URL",
-        "QWENPAW_ADMIN_USERNAME",
-        "QWENPAW_ADMIN_PASSWORD",
         "ADMIN_EXPECTED_ENABLED",
-        "ADMIN_SMOKE_ACTIONS",
+        "SMOKE_ADMIN_ACTIONS",
     },
     "secrets": {
         "OPS_TOKEN",
     },
     "optional_secrets": {
-        "ADMIN_TOKEN",
+        "ADMIN_PASSWORD",
         "ADMIN_CSRF_TOKEN",
         "DASHSCOPE_API_KEY",
         "OPENAI_API_KEY",
@@ -140,6 +137,7 @@ expected_lists = {
         "DISCORD_BOT_TOKEN",
     },
     "variables": {
+        "ADMIN_USERNAME",
         "PORT",
         "QWENPAW_PORT",
         "QWENPAW_WORKING_DIR",
@@ -170,7 +168,7 @@ for key, value in expected_scalars.items():
 
 unexpected_keys = sorted(set(manifest) - allowed_keys)
 if unexpected_keys:
-    failures.append("hfs-dev.toml must remain the minimal v2 semantic manifest; unexpected keys: " + ", ".join(unexpected_keys))
+    failures.append("hfs-dev.toml must remain the minimal v3 semantic manifest; unexpected keys: " + ", ".join(unexpected_keys))
 
 seen_categories: dict[str, set[str]] = {}
 for field, expected in expected_lists.items():
@@ -249,7 +247,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 primary = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
 candidate = tomllib.loads((root / "hfs-dev.candidate.toml").read_text(encoding="utf-8"))
-if candidate.get("space") != "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate":
+if candidate.get("space") != "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate":
     raise SystemExit("candidate manifest has the wrong fixed Space id")
 if candidate.get("project_class") != "preview" or candidate.get("target_role") != "candidate":
     raise SystemExit("candidate manifest must remain an optional preview candidate")
@@ -271,7 +269,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 failures: list[str] = []
 expected_spaces = {
-    "candidate": "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate",
+    "candidate": "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate",
     "formal": "BlueSkyXN/QwenPaw-all-in-one-HFS",
 }
 expected_manifests = {
@@ -346,7 +344,7 @@ for sample in formal_samples:
 candidate_samples = {
     f'space = "{expected_spaces["candidate"]}"',
     f"https://huggingface.co/spaces/{expected_spaces['candidate']}",
-    "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space",
+    "https://blueskyxn-qwenpaw-all-in-one-hfs-v3-candidate.hf.space",
     f"HF_SPACE_ID={expected_spaces['candidate']}",
     "https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS",
 }
@@ -494,9 +492,9 @@ for marker in (
         failures.append(f"release tools tests lack required profile contract case: {marker}")
 for marker in (
     'string_list(manifest, "optional_secrets")',
-    "configured_optional_secrets",
-    "managed_secrets = secrets | optional_secrets",
-    "remote_secrets - managed_secrets",
+    "present_optional_secrets = configured_optional_secrets",
+    "pushed_remote_secrets = remote_setting_names(manifest, pushed_secrets)",
+    "remote_secrets - pushed_remote_secrets",
 ):
     if marker not in sync_source:
         failures.append(f"Settings sync lacks optional Secret contract marker: {marker}")
@@ -505,7 +503,7 @@ for marker in (
     "test_missing_required_secret_is_rejected",
     "test_nonempty_optional_placeholder_is_rejected",
     "test_configured_optional_secret_is_pushed_and_required_on_readback",
-    "test_prune_retains_registered_optional_secret_when_local_value_is_empty",
+    "test_prune_deletes_optional_secret_without_local_plaintext",
 ):
     if marker not in test_source:
         failures.append(f"release tools tests lack required optional Secret case: {marker}")
@@ -615,8 +613,8 @@ require_grep 'QWENPAW_CONSOLE_BUNDLE_SHA256 matches downloaded artifact' scripts
 require_grep 'EXPECTED_QWENPAW_SOURCE_REF' scripts/hf-space-smoke.sh "live smoke must verify the runtime source SHA"
 require_grep 'console bundle provenance does not contain the runtime source SHA' scripts/hf-space-smoke.sh "live smoke must bind console provenance to source SHA"
 require_grep 'payload\.get\("version", \{\}\)\.get\("release_pins", \{\}\)' scripts/hf-space-smoke.sh "live smoke must read provenance from the wrapped ops version payload"
-require_grep 'hf_space_sync.py diff' docs/configuration.md "configuration docs must include Settings diff/readback"
-require_grep 'hf_space_sync.py push' docs/configuration.md "configuration docs must include Settings push"
+require_grep 'hfs_dev.py diff' docs/configuration.md "configuration docs must include Settings diff/readback"
+require_grep 'hfs_dev.py push' docs/configuration.md "configuration docs must include Settings push"
 require_grep 'require-upstream-main' scripts/check-qwenpaw-pins.py "pin checker must support enforcing current upstream main"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"

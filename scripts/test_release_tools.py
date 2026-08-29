@@ -135,7 +135,7 @@ class SyntheticBundleRepository:
                 profile["manifest"],
                 "\n".join(
                     [
-                        'standard = "2.1"',
+                        'standard = "3.0"',
                         'project = "qwenpaw-all-in-one-hfs"',
                         f'space = "{profile["space"]}"',
                         'project_class = "preview"',
@@ -146,7 +146,6 @@ class SyntheticBundleRepository:
                         'lane = "source"',
                         'version_source = "commit"',
                         f'env_file = "{profile["env_file"]}"',
-                        'secret_files = []',
                         'local_only = ["HF_TOKEN"]',
                         'secrets = ["OPS_TOKEN"]',
                         'optional_secrets = ["OPENAI_API_KEY"]',
@@ -351,7 +350,7 @@ def write_sync_fixture(
     mount_config: bool = False,
 ) -> None:
     manifest_lines = [
-        'standard = "2.1"',
+        'standard = "3.0"',
         'project = "qwenpaw-all-in-one-hfs"',
         f'space = "{exporter.CANDIDATE_SPACE}"',
         'project_class = "preview"',
@@ -362,7 +361,6 @@ def write_sync_fixture(
         'lane = "source"',
         'version_source = "commit"',
         'env_file = ".env"',
-        'secret_files = []',
         f"local_only = {json.dumps(local_only or ['HF_TOKEN'])}",
         f"secrets = {json.dumps(required_secrets or ['OPS_TOKEN'])}",
         f"optional_secrets = {json.dumps(optional_secrets or ['OPENAI_API_KEY'])}",
@@ -421,7 +419,7 @@ class OptionalSecretTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         root = Path(temporary.name)
         write_sync_fixture(root, ops_token="required-ops-value", optional_token="")
-        with self.assertRaisesRegex(sync.SyncError, "必须与 manifest 声明一致"):
+        with self.assertRaisesRegex(sync.SyncError, "必须与 manifest 的 env_file 一致"):
             sync.preflight(root, env_file=Path("local/hfs-targets/candidate.env"))
 
     def test_nonempty_optional_placeholder_is_rejected(self) -> None:
@@ -442,7 +440,7 @@ class OptionalSecretTests(unittest.TestCase):
         self.assertEqual(api.added_secrets, ["OPENAI_API_KEY", "OPS_TOKEN"])
         self.assertEqual(remote_secrets, {"OPENAI_API_KEY", "OPS_TOKEN"})
 
-    def test_prune_retains_registered_optional_secret_when_local_value_is_empty(self) -> None:
+    def test_prune_deletes_optional_secret_without_local_plaintext(self) -> None:
         root, _result = self.preflight("required-ops-value", "")
         remote_secrets = {"OPENAI_API_KEY", "UNREGISTERED_SECRET"}
         api = FakeSpaceApi(remote_secrets)
@@ -453,8 +451,8 @@ class OptionalSecretTests(unittest.TestCase):
             contextlib.redirect_stdout(io.StringIO()),
         ):
             self.assertEqual(sync.cmd_push(root, True, True), 0)
-        self.assertEqual(api.deleted_secrets, ["UNREGISTERED_SECRET"])
-        self.assertIn("OPENAI_API_KEY", remote_secrets)
+        self.assertEqual(api.deleted_secrets, ["OPENAI_API_KEY", "UNREGISTERED_SECRET"])
+        self.assertNotIn("OPENAI_API_KEY", remote_secrets)
 
 
 class FakeVariable:
@@ -469,7 +467,25 @@ class FakeSpaceApi:
         self.added_secrets: list[str] = []
         self.deleted_secrets: list[str] = []
 
-    def space_info(self, *_args, **_kwargs) -> None:
+    def whoami(self, **_kwargs) -> dict[str, str]:
+        return {"name": "example-org"}
+
+    def space_info(self, *_args, **_kwargs) -> types.SimpleNamespace:
+        return types.SimpleNamespace(private=True)
+
+    def list_user_repos(self, *_args, **_kwargs) -> list[types.SimpleNamespace]:
+        return [
+            types.SimpleNamespace(
+                id=exporter.CANDIDATE_SPACE,
+                type="space",
+                visibility="protected",
+            )
+        ]
+
+    def bucket_info(self, *_args, **_kwargs) -> types.SimpleNamespace:
+        return types.SimpleNamespace(private=True)
+
+    def update_repo_settings(self, *_args, **_kwargs) -> None:
         return None
 
     def add_space_secret(self, _space: str, name: str, _value: str, **_kwargs) -> None:
@@ -627,7 +643,7 @@ class SyncSecurityTests(unittest.TestCase):
 
     def test_pull_rejects_unsafe_components_before_bucket_read(self) -> None:
         for kind in ("symlink", "file"):
-            for component in ("local", "hfs-sync-pulled", "QwenPaw-all-in-one-HFS-v2-candidate"):
+            for component in ("local", "hfs-sync-pulled", "QwenPaw-all-in-one-HFS-v3-candidate"):
                 with self.subTest(kind=kind, component=component):
                     with (
                         tempfile.TemporaryDirectory() as temporary,
@@ -644,7 +660,7 @@ class SyncSecurityTests(unittest.TestCase):
                         for name in (
                             "local",
                             "hfs-sync-pulled",
-                            "QwenPaw-all-in-one-HFS-v2-candidate",
+                            "QwenPaw-all-in-one-HFS-v3-candidate",
                         ):
                             path = parent / name
                             if name == component:
@@ -691,7 +707,7 @@ class SyncSecurityTests(unittest.TestCase):
                         root
                         / "local"
                         / "hfs-sync-pulled"
-                        / "QwenPaw-all-in-one-HFS-v2-candidate"
+                        / "QwenPaw-all-in-one-HFS-v3-candidate"
                     )
                     base.mkdir(parents=True, mode=0o700)
                     target = base / "20260730010101"
@@ -744,7 +760,7 @@ class SyncSecurityTests(unittest.TestCase):
                     root
                     / "local"
                     / "hfs-sync-pulled"
-                    / "QwenPaw-all-in-one-HFS-v2-candidate"
+                    / "QwenPaw-all-in-one-HFS-v3-candidate"
                 )
                 pull_dir = next(base.iterdir())
                 pull_dir.rmdir()
@@ -801,7 +817,7 @@ class SyncSecurityTests(unittest.TestCase):
                     root
                     / "local"
                     / "hfs-sync-pulled"
-                    / "QwenPaw-all-in-one-HFS-v2-candidate"
+                    / "QwenPaw-all-in-one-HFS-v3-candidate"
                 ).glob("*/config.toml")
             )
             self.assertEqual(len(pulled), 1)

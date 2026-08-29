@@ -143,9 +143,9 @@ The manual `deploy-hf-space-candidate` workflow is the only reviewed candidate r
 upload path. Before dispatch:
 
 - Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
-- Confirm the fixed candidate `BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate` already exists and is private.
+- Confirm the fixed candidate `BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate` already exists and is private.
 - Confirm the `hfs-candidate` GitHub environment exposes only the required deployment Secret name `HF_TOKEN`; never print its value.
-- Review candidate Settings separately with `hf_space_sync.py diff`; repo upload does not sync Settings.
+- Review candidate Settings separately with `hfs_dev.py diff`; repo upload does not sync Settings.
 - Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_CANDIDATE`.
 
 The workflow must fail closed if `source_ref`, `GITHUB_SHA`, or current `origin/main` differ;

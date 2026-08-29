@@ -6,7 +6,7 @@
 
 ```text
 Pattern A: HFS Port Repository
-HFS v2.1: project_class = "preview", target_role = "primary", sovereignty = "port", lane = "source", version_source = "commit"
+HFS v3.0: project_class = "preview", target_role = "primary", sovereignty = "port", lane = "source", version_source = "commit"
 Space root: repo root
 Source of truth: Dockerfile's pinned upstream QwenPaw source commit
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI

@@ -79,9 +79,9 @@ def require_admin(handler: BaseHTTPRequestHandler) -> bool:
     if not enabled():
         json_response(handler, 404, {"ok": False, "error": "admin disabled"})
         return False
-    expected = os.environ.get("ADMIN_TOKEN", "")
+    expected = os.environ.get("ADMIN_PASSWORD", "")
     if not expected:
-        json_response(handler, 503, {"ok": False, "error": "ADMIN_TOKEN is not configured"})
+        json_response(handler, 503, {"ok": False, "error": "ADMIN_PASSWORD is not configured"})
         return False
     if not hmac.compare_digest(token_from(handler), expected):
         json_response(handler, 401, {"ok": False, "error": "unauthorized"})

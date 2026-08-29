@@ -31,9 +31,9 @@ FORMAL_SPACE_URL = f"https://huggingface.co/spaces/{FORMAL_SPACE}"
 FORMAL_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space"
 
 CANDIDATE_MANIFEST = "hfs-dev.candidate.toml"
-CANDIDATE_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
+CANDIDATE_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate"
 CANDIDATE_SPACE_URL = f"https://huggingface.co/spaces/{CANDIDATE_SPACE}"
-CANDIDATE_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space"
+CANDIDATE_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs-v3-candidate.hf.space"
 
 PROFILE_NAMES = ("candidate", "formal")
 PROFILES: dict[str, dict[str, str]] = {
@@ -95,7 +95,7 @@ BUILD_SOURCE_KEYS = {
     *DOCKER_BUILD_ARGS.values(),
 }
 EXPECTED_MANIFEST_SCALARS = {
-    "standard": "2.1",
+    "standard": "3.0",
     "project": "qwenpaw-all-in-one-hfs",
     "project_class": "preview",
     "space_visibility": "protected",
@@ -235,8 +235,8 @@ def _validate_manifest(raw: bytes, profile_name: str) -> None:
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise BundleError(f"selected manifest has an unexpected {key}")
-    if manifest.get("secret_files") != []:
-        raise BundleError("selected manifest must declare an empty secret_files list")
+    if "secret_files" in manifest:
+        raise BundleError("selected HFS v3.0 manifest must not declare secret_files")
 
 
 def _build_source(source_commit: str, dockerfile: str, profile_name: str) -> dict[str, Any]:

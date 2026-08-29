@@ -3,8 +3,8 @@ set -euo pipefail
 
 base="${1:?usage: $0 https://your-space.hf.space}"
 base="${base%/}"
-ops_token="${OPS_TOKEN:-${QWENPAW_OPS_TOKEN:-}}"
-admin_token="${ADMIN_TOKEN:-${QWENPAW_ADMIN_TOKEN:-}}"
+ops_token="${OPS_TOKEN:-}"
+admin_token="${ADMIN_PASSWORD:-}"
 admin_expected="${SMOKE_ADMIN_ENABLED:-${ADMIN_ENABLED:-false}}"
 expected_source_ref="${EXPECTED_QWENPAW_SOURCE_REF:-}"
 expected_source_version="${EXPECTED_QWENPAW_SOURCE_VERSION:-}"
@@ -91,7 +91,7 @@ fi
 admin_status=$(curl -sS -o /dev/null -w "%{http_code}" --max-time 10 "$base/_admin/" || true)
 if [ "$admin_expected" = "true" ]; then
   if [ -z "$admin_token" ]; then
-    printf 'FAIL smoke: ADMIN_TOKEN is required when SMOKE_ADMIN_ENABLED=true\n' >&2
+    printf 'FAIL smoke: ADMIN_PASSWORD is required when SMOKE_ADMIN_ENABLED=true\n' >&2
     exit 1
   fi
   if [ "$admin_status" != "200" ]; then
