@@ -4,9 +4,9 @@ set -euo pipefail
 base="${1:?usage: $0 https://your-space.hf.space}"
 base="${base%/}"
 admin_expected="${ADMIN_EXPECTED_ENABLED:-${ADMIN_ENABLED:-false}}"
-admin_actions="${ADMIN_SMOKE_ACTIONS:-false}"
-admin_token="${ADMIN_TOKEN:-${QWENPAW_ADMIN_TOKEN:-}}"
-admin_csrf="${ADMIN_CSRF_TOKEN:-${QWENPAW_ADMIN_CSRF_TOKEN:-}}"
+admin_actions="${SMOKE_ADMIN_ACTIONS:-false}"
+admin_token="${ADMIN_PASSWORD:-}"
+admin_csrf="${ADMIN_CSRF_TOKEN:-}"
 
 expect_status() {
   local name=$1
@@ -25,7 +25,7 @@ require_admin_token() {
   if [ -n "$admin_token" ]; then
     return
   fi
-  printf 'FAIL admin-smoke: ADMIN_TOKEN is required when ADMIN_EXPECTED_ENABLED=true\n' >&2
+  printf 'FAIL admin-smoke: ADMIN_PASSWORD is required when ADMIN_EXPECTED_ENABLED=true\n' >&2
   exit 1
 }
 
@@ -75,7 +75,7 @@ if [ "$admin_actions" = "true" ]; then
     -d '{"confirm":true}' \
     "$base/_admin/api/actions/run-health-checks"
 else
-  printf 'SKIP admin-smoke: run-health-checks requires ADMIN_SMOKE_ACTIONS=true\n'
+  printf 'SKIP admin-smoke: run-health-checks requires SMOKE_ADMIN_ACTIONS=true\n'
 fi
 
 printf 'PASS qwenpaw-admin-smoke\n'

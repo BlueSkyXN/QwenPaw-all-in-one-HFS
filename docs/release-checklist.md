@@ -143,9 +143,9 @@ The manual `deploy-hf-space-candidate` workflow is the only reviewed candidate r
 upload path. Before dispatch:
 
 - Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
-- Confirm the fixed candidate `BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate` already exists and is private.
+- Confirm the fixed candidate `BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate` already exists and is private.
 - Confirm the `hfs-candidate` GitHub environment exposes only the required deployment Secret name `HF_TOKEN`; never print its value.
-- Review candidate Settings separately with `hf_space_sync.py diff`; repo upload does not sync Settings.
+- Review candidate Settings separately with `hfs_dev.py diff`; repo upload does not sync Settings.
 - Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_CANDIDATE`.
 
 The workflow must fail closed if `source_ref`, `GITHUB_SHA`, or current `origin/main` differ;
@@ -173,15 +173,15 @@ The canonical repository-write workflow is `.github/workflows/deploy-hfs-formal.
 Before dispatch:
 
 - Confirm the workflow ref is GitHub `main` and record its exact 40-character SHA.
-- Confirm `BlueSkyXN/QwenPaw-all-in-one-HFS` already exists with `private=true`.
+- Confirm `BlueSkyXN/QwenPaw-all-in-one-HFS` already exists as Protected.
 - Confirm the `hfs-production` environment exposes only the required `HF_TOKEN` deployment
   Secret; never print its value.
 - Enter `source_ref=<exact main SHA>` and `confirm_upload=PUBLISH_FORMAL`.
 
 The workflow must fail closed on SHA drift, a dirty checkout, static/contract failure,
-non-private visibility, any remote path outside the strict allowlist, bundle verification,
+non-public visibility, any remote path outside the strict allowlist, bundle verification,
 checksum/provenance mismatch, or factory restart failure. It installs
-`huggingface_hub==1.5.0`, accepts no owner/repository/Space override, and does not create or
+`huggingface_hub==1.25.1` with `click==8.4.2`, accepts no owner/repository/Space override, and does not create or
 delete repositories, sync Settings, or change volumes.
 
 After a green workflow, record these separate states:
@@ -198,7 +198,7 @@ existing-account persistence/backup/restore: NOT RUN by this workflow
 
 ## GitHub/Hugging Face Closeout
 
-Canonical production closeout starts with a reviewed GitHub `main` commit and the formal
+Canonical Preview closeout starts with a reviewed GitHub `main` commit and the formal
 workflow above. Do not push the repository root directly to either Space as a substitute for
 the fixed-profile exporter/readback contract.
 

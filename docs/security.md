@@ -49,7 +49,7 @@ When the query token is valid, `ops-service` exchanges it for a signed HttpOnly 
 
 When `ADMIN_ENABLED=true`, mutating endpoints still require:
 
-- `ADMIN_TOKEN`
+- `ADMIN_PASSWORD`
 - `ADMIN_CSRF_TOKEN`
 - JSON body with `confirm=true`
 - fixed whitelisted actions only

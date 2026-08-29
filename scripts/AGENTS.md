@@ -43,7 +43,7 @@ Key files: `static-check.sh`, `validate-hfs-contract.sh`, `check-qwenpaw-pins.py
 
 - Do not make `static-check.sh` require Docker, network, Hugging Face auth, or live Space
   access.
-- Do not print real `OPS_TOKEN`, `ADMIN_TOKEN`, provider keys, or `.env.local` values.
+- Do not print real `OPS_TOKEN`, `ADMIN_PASSWORD`, provider keys, or `.env.local` values.
 - Do not let smoke pass if only `/nginx-health` works while app root or health/readiness
   endpoints are broken.
 - Do not make scripts mutate remotes, deploy, or delete local data unless the user asked for

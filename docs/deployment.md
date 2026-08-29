@@ -18,6 +18,10 @@ cp .env.example .env
 
 Fill `.env` from the committed no-secret template. It is the local HFS value ledger for control values, Space Variables, Space Secrets, and smoke inputs; keep real values local-only. `.env.local` remains ignored only for local Docker/run compatibility.
 
+This repository is a Preview deployment. Routine changes may update the canonical Space
+directly. The candidate workflow below is an optional isolation tool for high-risk changes,
+not a normal prerequisite.
+
 ## Lightweight Local Checks
 
 These checks do not install external dependencies and do not build the container:
@@ -30,10 +34,10 @@ git diff --check
 
 ## Candidate Bundle Contract
 
-The candidate Space is fixed at
-`BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`. Do not push this GitHub repository root
+When explicitly selected, the candidate Space is fixed at
+`BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate`. Do not push this GitHub repository root
 directly to that Space: the root Dockerfile copies `hfs-dev.toml`, whose normal checkout
-profile targets production. Export the reviewed candidate profile into an exact bundle
+profile targets the canonical Preview Space. Export the reviewed candidate profile into an exact bundle
 instead:
 
 ```bash
@@ -77,14 +81,19 @@ Sync candidate Settings separately from the ignored local ledger when that opera
 explicitly approved:
 
 ```bash
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py push --manifest hfs-dev.candidate.toml --env-file .env
-python3 scripts/hf_space_sync.py diff --manifest hfs-dev.candidate.toml --env-file .env
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.candidate.toml
+python3 scripts/hfs_dev.py push --manifest hfs-dev.candidate.toml
+python3 scripts/hfs_dev.py diff --manifest hfs-dev.candidate.toml
 ```
 
-An empty registered optional Secret is not pushed, does not count as missing, and is not
-deleted by `--prune --yes`. A configured optional Secret is subject to the same placeholder,
-seed-scan, push, and name-readback safeguards as `OPS_TOKEN`.
+The candidate manifest fixes the plaintext ledger at
+`local/hfs-targets/candidate.env`; it must not reuse canonical `.env` values implicitly.
+
+An empty registered optional Secret is not pushed and does not count as a missing required
+Secret. If the same name exists remotely without local plaintext, `diff` reports drift, normal
+`push` refuses the write, and an explicitly approved `--prune --yes` deletes it. A configured
+optional Secret is subject to the same placeholder, seed-scan, push, and name-readback safeguards
+as `OPS_TOKEN`.
 
 ## Local Build
 
@@ -137,8 +146,8 @@ python3 -m huggingface_hub.cli.hf buckets create \
   <namespace>/<bucket-name> --private --exist-ok
 ```
 
-`huggingface_hub==1.5.0` does not expose Space volume mutation through its module CLI.
-Attach the bucket read-write at `/data` through the reviewed HFS provisioner or Hugging
+The repository workflows do not mutate Space volumes. Attach the bucket read-write at `/data`
+through the reviewed HFS provisioner or Hugging
 Face Settings, then read back the runtime:
 
 ```bash
@@ -156,13 +165,13 @@ Record the bucket ID only in local `.env` or another private deployment ledger:
 HF_STORAGE_BUCKET=<namespace>/<bucket-name>
 ```
 
-## Production Hugging Face Space
+## Canonical Preview Hugging Face Space
 
-This section describes the canonical production Space and its separately approved manual
-release gate. It is not the candidate workflow above. A local semantic-manifest change does
+This section describes the canonical Preview Space. It is not the optional candidate workflow
+above. A local semantic-manifest change does
 not publish to a remote, update Space Settings, or cause Space takeover.
 
-1. Confirm the fixed canonical Docker Space already exists with `private=true`.
+1. Confirm the fixed canonical Docker Space already exists as Protected.
 2. Publish only the verified `formal` profile through the protected manual workflow.
 3. Attach a private Storage Bucket read-write at `/data` if runtime data must survive
    restarts/rebuilds.
@@ -172,7 +181,7 @@ not publish to a remote, update Space Settings, or cause Space takeover.
 
 GitHub push, HF Space repo SHA, runtime takeover and endpoint smoke are separate states. Execute them only as an explicitly approved release operation; treat the Space as available only after live smoke passes.
 
-## Formal Production Workflow
+## Formal Canonical Preview Workflow
 
 `.github/workflows/deploy-hfs-formal.yml` is the reviewed canonical repository-write path.
 It does not accept owner, repository, manifest, or Space inputs. Dispatch it from GitHub
@@ -252,8 +261,8 @@ On a fresh attached `/data` volume, QwenPaw shows `Create Account`. Use the brow
 create the first admin account only with credentials stored in local `.env`:
 
 ```env
-QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
-QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
+ADMIN_USERNAME=<local-test-admin-name>
+ADMIN_PASSWORD=<local-test-admin-password>
 ```
 
 Successful verification reaches `/chat` and shows `Logout`. Store screenshots under `local/`; they are local-only and ignored.

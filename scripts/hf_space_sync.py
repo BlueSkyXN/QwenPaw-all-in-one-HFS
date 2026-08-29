@@ -1,23 +1,33 @@
 #!/usr/bin/env python3
-"""HFS v2 示例同步脚本。
+"""HFS v3.0 示例工具与同步脚本。
 
 命令：
+  init   创建或补全标准项目文件和用户级默认值（只生成 standard = "3.0"）
+  check  静态对齐检查；旧标准（2.1/2.2）项目只读输出迁移差距报告
+  info   显示项目地址、登录入口、键设置状态和事实源；永不显示值
   diff   比较本地登记、Space 设置、种子和实例配置；有差异返回 1
   push   从本地 env 文件推送已登记设置，并更新和读回种子
   pull   将实例配置回收到 local/hfs-sync-pulled/，绝不覆盖根种子
 
-依赖：Python 3.11+、huggingface_hub==1.5.0、click==8.3.3
+v3.0 是 breaking 标准：init/info/diff/push/pull 只接受 standard = "3.0"，
+旧标准项目只能由 check 的差距审计只读读取，迁移按 README 配方人工完成。
+
+init/check/info 仅依赖 Python 3.11+ 标准库。
+diff/push/pull 另需 huggingface_hub==1.25.1、click==8.4.2
 （后者是本脚本调用的 module HF CLI 的直接运行依赖）；
 仅处理 YAML seed 时需要 PyYAML>=6.0。
-脚本不会打印 secret 值；HF_TOKEN/GH_TOKEN 只作为本地控制凭据，不推 Space。
+diff/push/pull/info 不打印 secret 值；用户主动执行 init 时会显示新生成的标准登录值。
+HF_TOKEN/GH_TOKEN 只作为本地控制凭据，不推 Space。
 """
 
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import re
+import secrets as pysecrets
 import stat
 import subprocess
 import sys
@@ -27,20 +37,54 @@ import tomllib
 import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from huggingface_hub import HfApi
-from huggingface_hub.utils import build_hf_headers, validate_repo_id
+if TYPE_CHECKING:
+    from huggingface_hub import HfApi
 
 
-STANDARD = "2.0"
+SUPPORTED_STANDARDS = {"3.0"}
+DEFAULT_STANDARD = "3.0"
+LEGACY_STANDARDS = {"2.1", "2.2"}
+MANIFEST_ROOT_FIELDS = {
+    "standard",
+    "project",
+    "space",
+    "space_visibility",
+    "bucket_visibility",
+    "project_class",
+    "target_role",
+    "sovereignty",
+    "lane",
+    "version_source",
+    "bucket_namespace",
+    "local_only",
+    "secrets",
+    "optional_secrets",
+    "variables",
+    "env_file",
+    "dist_bucket",
+    "seed_file",
+    "other_objects",
+    "mount_config_bucket",
+    "mount_config_object",
+    "deviations",
+    "compat",
+}
+STANDARD_KEYS = ("ADMIN_USERNAME", "ADMIN_PASSWORD", "OPS_TOKEN")
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
 DEFAULT_DIST_BUCKET = "hfs-dist"
 DEFAULT_LOCAL_ONLY = {"HF_TOKEN", "GH_TOKEN"}
 SOVEREIGNTIES = {"sovereign", "fork", "port"}
 LANES = {"source", "artifact"}
 VERSION_SOURCES = {"latest", "tag", "commit"}
+PROJECT_CLASSES = {"preview", "production"}
+TARGET_ROLES = {"primary", "rotation", "candidate", "restore"}
+SPACE_VISIBILITIES = {"protected"}
+BUCKET_VISIBILITIES = {"private"}
 ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 SAFE_SLUG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$")
+SPACE_ID = re.compile(r"^(?:\w(?:[\w.-]*\w)?/)?\w(?:[\w.-]{0,94}\w)?$")
 TEXT_KEY_VALUE = re.compile(r"^\s*([A-Za-z0-9_.-]+)\s*[:=]\s*(.*?)\s*$")
 URL_VALUE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://[^\s\"']+")
 DSN_FIELD = re.compile(
@@ -75,10 +119,33 @@ LITERAL_SECRET = re.compile(
     r"(hf_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}"
     r"|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,})"
 )
+DEFAULT_WORDS = (
+    "amber", "apple", "atlas", "bamboo", "birch", "breeze", "brook", "cedar",
+    "cloud", "coral", "dawn", "delta", "ember", "fern", "field", "forest",
+    "harbor", "hazel", "island", "jade", "lake", "lotus", "maple", "meadow",
+    "mist", "moon", "ocean", "olive", "pine", "river", "stone", "willow",
+)
 
 
 class SyncError(RuntimeError):
     """可安全展示给用户的同步错误。"""
+
+
+def forbidden_key_reason(name: str) -> str | None:
+    """v3.0 禁止登记的旧式键名；返回原因，合法时返回 None。
+
+    SMOKE_* 开头的键视为真实独立 smoke 身份，不在禁止之列；
+    只有 产品前缀 + SMOKE 场景词（如 SOUWEN_SMOKE_BEARER_TOKEN）被禁止。
+    """
+    if name.startswith(("SHOWCASE_", "BOOTSTRAP_")) or "_SHOWCASE_" in name or "_BOOTSTRAP_" in name:
+        return "包含已禁止的 SHOWCASE/BOOTSTRAP 场景词"
+    if "_SMOKE_" in name:
+        return "包含已禁止的 产品前缀 + SMOKE 场景词；真实独立 smoke 身份使用 SMOKE_ 开头"
+    if name != "ADMIN_PASSWORD" and name.endswith("_ADMIN_PASSWORD"):
+        return "禁止产品前缀管理员密码键；统一使用 ADMIN_PASSWORD"
+    if name != "OPS_TOKEN" and name.endswith("_OPS_TOKEN"):
+        return "禁止产品前缀运维键；统一使用 OPS_TOKEN"
+    return None
 
 
 def resolve_local_file(root: Path, value: Path, field: str) -> Path:
@@ -92,10 +159,49 @@ def resolve_local_file(root: Path, value: Path, field: str) -> Path:
     return candidate
 
 
+def validate_env_file_path(value: Any) -> str:
+    relative = validate_object_path(value, "env_file")
+    path = PurePosixPath(relative)
+    if relative == ".env":
+        return relative
+    if len(path.parts) == 3 and path.parts[:2] == ("local", "hfs-targets") and path.suffix == ".env":
+        return relative
+    raise SyncError("env_file 只能是项目根 .env 或 local/hfs-targets/<profile>.env")
+
+
+def reject_symlink_components(root: Path, relative: Path, field: str) -> None:
+    current = root.resolve()
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise SyncError(f"{field} 不能包含 symlink：{relative}")
+
+
+def secure_plaintext_file(root: Path, relative: Path, field: str) -> Path:
+    reject_symlink_components(root, relative, field)
+    path = resolve_local_file(root, relative, field)
+    if not path.exists():
+        raise SyncError(f"缺少 {path}；本地明文事实源必须先建立")
+    if not path.is_file():
+        raise SyncError(f"{field} 必须是普通文件：{relative}")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode != 0o600:
+        path_stat = path.stat()
+        owned_by_user = not hasattr(os, "getuid") or path_stat.st_uid == os.getuid()
+        if not owned_by_user or not os.access(path, os.W_OK):
+            raise SyncError(f"{field} 权限必须是 0600，且当前用户无法修正：{relative}")
+        try:
+            path.chmod(0o600)
+        except OSError as exc:
+            raise SyncError(f"{field} 权限必须是 0600，自动修正失败：{relative}") from exc
+        print(f"已将 {field} 权限从 {mode:04o} 修正为 0600：{relative}")
+    return path
+
+
 def load_manifest(root: Path, manifest_file: Path = Path("hfs-dev.toml")) -> dict[str, Any]:
     path = resolve_local_file(root, manifest_file, "manifest")
     if not path.exists():
-        raise SyncError(f"缺少 {path}；见规范第 7 节")
+        raise SyncError(f"缺少 {path}；见规范第 8 节")
     try:
         with path.open("rb") as file:
             manifest = tomllib.load(file)
@@ -142,10 +248,7 @@ def strip_env_inline_comment(value: str) -> str:
     return value
 
 
-def load_env(root: Path, env_file: Path = Path(".env")) -> dict[str, str]:
-    path = resolve_local_file(root, env_file, "env-file")
-    if not path.exists():
-        raise SyncError(f"缺少 {path}；本地值必须先登记再同步")
+def parse_env_file(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw_line.strip()
@@ -168,6 +271,331 @@ def load_env(root: Path, env_file: Path = Path(".env")) -> dict[str, str]:
     return values
 
 
+def generated_default_value() -> str:
+    words = [pysecrets.choice(DEFAULT_WORDS) for _ in range(3)]
+    number = pysecrets.randbelow(90) + 10
+    return "-".join([*words, str(number)])
+
+
+def user_defaults_file() -> Path:
+    return Path.home() / ".config" / "hfs-dev" / "defaults.env"
+
+
+def secure_external_plaintext_file(path: Path, field: str) -> Path:
+    if path.is_symlink():
+        raise SyncError(f"{field} 不能是 symlink：{path}")
+    if not path.exists():
+        raise SyncError(f"缺少 {path}")
+    if not path.is_file():
+        raise SyncError(f"{field} 必须是普通文件：{path}")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode != 0o600:
+        path_stat = path.stat()
+        owned_by_user = not hasattr(os, "getuid") or path_stat.st_uid == os.getuid()
+        if not owned_by_user or not os.access(path, os.W_OK):
+            raise SyncError(f"{field} 权限必须是 0600，且当前用户无法修正：{path}")
+        try:
+            path.chmod(0o600)
+        except OSError as exc:
+            raise SyncError(f"{field} 权限自动修正失败：{path}") from exc
+        print(f"已将 {field} 权限从 {mode:04o} 修正为 0600：{path}")
+    return path
+
+
+def ensure_user_config_directory(path: Path) -> None:
+    if path.is_symlink():
+        raise SyncError(f"用户级默认目录不能是 symlink：{path}")
+    if path.exists() and not path.is_dir():
+        raise SyncError(f"用户级默认目录必须是目录：{path}")
+    path.mkdir(parents=True, exist_ok=True, mode=0o700)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode != 0o700:
+        path_stat = path.stat()
+        owned_by_user = not hasattr(os, "getuid") or path_stat.st_uid == os.getuid()
+        if not owned_by_user or not os.access(path, os.W_OK):
+            raise SyncError(f"用户级默认目录权限必须是 0700，且当前用户无法修正：{path}")
+        path.chmod(0o700)
+
+
+def write_new_text_file(path: Path, content: str, *, mode: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    except FileExistsError as exc:
+        raise SyncError(f"目标文件已存在，拒绝覆盖：{path}") from exc
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(content)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    path.chmod(mode)
+
+
+def merge_dotenv_values(path: Path, desired: dict[str, str], *, private: bool) -> list[str]:
+    if path.exists():
+        if path.is_symlink() or not path.is_file():
+            raise SyncError(f"dotenv 目标必须是普通文件且不能是 symlink：{path}")
+        if private:
+            secure_external_plaintext_file(path, "env_file")
+        raw = path.read_text(encoding="utf-8")
+        current = parse_env_file(path)
+        lines = raw.splitlines()
+    else:
+        raw = ""
+        current = {}
+        lines = []
+
+    changed: list[str] = []
+    replacements = {key: value for key, value in desired.items() if key in current and not current[key] and value}
+    if replacements:
+        for index, raw_line in enumerate(lines):
+            candidate = raw_line.strip()
+            if candidate.startswith("export "):
+                candidate = candidate[7:].lstrip()
+            key = candidate.partition("=")[0].strip() if "=" in candidate else ""
+            if key in replacements:
+                lines[index] = f"{key}={replacements[key]}"
+                current[key] = replacements[key]
+                changed.append(key)
+
+    for key, value in desired.items():
+        if key not in current:
+            lines.append(f"{key}={value}")
+            current[key] = value
+            changed.append(key)
+
+    if not path.exists():
+        content = "\n".join(lines) + ("\n" if lines else "")
+        write_new_text_file(path, content, mode=0o600 if private else 0o644)
+    elif changed:
+        content = "\n".join(lines) + ("\n" if lines or raw.endswith("\n") else "")
+        path.write_text(content, encoding="utf-8")
+        if private:
+            path.chmod(0o600)
+    return changed
+
+
+def ensure_user_defaults(path: Path | None = None) -> tuple[Path, dict[str, str]]:
+    defaults_path = path or user_defaults_file()
+    ensure_user_config_directory(defaults_path.parent)
+    current: dict[str, str] = {}
+    if defaults_path.exists():
+        current = parse_env_file(secure_external_plaintext_file(defaults_path, "用户级 defaults"))
+    credential = current.get("ADMIN_PASSWORD") or current.get("OPS_TOKEN") or generated_default_value()
+    desired = {
+        "ADMIN_USERNAME": "admin",
+        "ADMIN_PASSWORD": credential,
+        "OPS_TOKEN": credential,
+    }
+    merge_dotenv_values(defaults_path, desired, private=True)
+    values = parse_env_file(secure_external_plaintext_file(defaults_path, "用户级 defaults"))
+    missing = [key for key in STANDARD_KEYS if not values.get(key)]
+    if missing:
+        raise SyncError(f"用户级 defaults 缺少可用值：{missing}")
+    return defaults_path, values
+
+
+def default_project_slug(root: Path) -> str:
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", root.name).strip("-._")
+    if not slug or not slug[0].isalnum():
+        return "my-app"
+    return slug[:96]
+
+
+def render_template(name: str, *, project: str | None = None) -> str:
+    path = TEMPLATE_DIR / name
+    if not path.is_file():
+        raise SyncError(f"缺少 hfs-dev 模板：{path}")
+    content = path.read_text(encoding="utf-8")
+    return content.replace("__PROJECT__", project or "my-app")
+
+
+def cmd_init(
+    root: Path,
+    manifest_file: Path = Path("hfs-dev.toml"),
+    *,
+    defaults_file: Path | None = None,
+) -> int:
+    root = root.resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    if not root.is_dir():
+        raise SyncError(f"项目根必须是目录：{root}")
+
+    manifest_path = resolve_local_file(root, manifest_file, "manifest")
+    manifest: dict[str, Any] | None = None
+    if manifest_path.exists():
+        # 先验后写：旧标准或非法 manifest 在任何文件改动前失败
+        manifest = load_manifest(root, manifest_file)
+        validate_manifest(manifest)
+
+    selected_env_file = manifest_env_file(manifest) if manifest is not None else Path(".env")
+    project_env_path = resolve_local_file(root, selected_env_file, "env_file")
+
+    defaults_path, defaults = ensure_user_defaults(defaults_file)
+    env_values = {
+        "ADMIN_USERNAME": defaults["ADMIN_USERNAME"],
+        "ADMIN_PASSWORD": defaults["ADMIN_PASSWORD"],
+        "OPS_TOKEN": defaults["OPS_TOKEN"],
+        "HF_TOKEN": "",
+        "GH_TOKEN": "",
+    }
+    changed_env = merge_dotenv_values(project_env_path, env_values, private=True)
+
+    created: list[Path] = []
+    example_path = root / ".env.example"
+    if example_path.exists():
+        merge_dotenv_values(
+            example_path,
+            {
+                "ADMIN_USERNAME": "admin",
+                "ADMIN_PASSWORD": "",
+                "OPS_TOKEN": "",
+                "HF_TOKEN": "",
+                "GH_TOKEN": "",
+            },
+            private=False,
+        )
+    else:
+        write_new_text_file(example_path, render_template("env.example"), mode=0o644)
+        created.append(Path(".env.example"))
+
+    for relative, template in ((Path("config.toml"), "config.toml"),):
+        target = root / relative
+        if not target.exists():
+            write_new_text_file(target, render_template(template), mode=0o644)
+            created.append(relative)
+
+    if not manifest_path.exists():
+        write_new_text_file(
+            manifest_path,
+            render_template("hfs-dev.toml", project=default_project_slug(root)),
+            mode=0o644,
+        )
+        created.append(manifest_path.relative_to(root))
+
+    print("HFS 项目初始化完成。")
+    print(f"用户级默认：{defaults_path}")
+    if created:
+        print(f"已创建：{', '.join(str(path) for path in created)}")
+    if changed_env:
+        print(f"{selected_env_file} 已补全：{', '.join(changed_env)}")
+    else:
+        print(f"{selected_env_file} 已完整，未覆盖现有值")
+    project_env = parse_env_file(project_env_path)
+    print(f"管理员用户名：{project_env['ADMIN_USERNAME']}")
+    print(f"管理员密码：{project_env['ADMIN_PASSWORD']}")
+    print(f"OPS token：{project_env['OPS_TOKEN']}")
+    print("下一步：运行 hfs-dev check 校验对齐；hfs-dev info 查看项目信息（不显示值）")
+    return 0
+
+
+def application_url(space: str) -> str | None:
+    """HFS 默认 subdomain 为 {owner}-{slug}；slug-only 时离线无法确定，返回 None。"""
+    parts = space.split("/")
+    if len(parts) != 2 or not all(parts):
+        return None
+    owner, slug = parts
+    host = re.sub(r"[^a-z0-9-]+", "-", f"{owner}-{slug}".lower().replace("_", "-")).strip("-")
+    if not host:
+        return None
+    return f"https://{host}.hf.space"
+
+
+def cmd_info(
+    root: Path,
+    manifest_file: Path = Path("hfs-dev.toml"),
+    env_file: Path | None = None,
+    *,
+    names_only: bool = False,
+    debug: bool = False,
+) -> int:
+    root = root.resolve()
+    manifest = load_manifest(root, manifest_file)
+    validate_manifest(manifest)
+    selected_env_file = manifest_env_file(manifest, env_file)
+    env_values = load_env(root, selected_env_file)
+    missing = [key for key in STANDARD_KEYS if not env_values.get(key)]
+    if missing:
+        keys = "、".join(missing)
+        raise SyncError(
+            f"{selected_env_file} 缺少可用标准键：{keys}。\n"
+            "请运行 hfs-dev init，或在该文件中补充对应 KEY=VALUE。"
+        )
+
+    app_url = application_url(str(manifest["space"]))
+    print("Project")
+    print(f"  name: {manifest['project']}")
+    print(f"  class: {manifest['project_class']}")
+    print(f"  space: {manifest['space']}")
+    print("\nApplication")
+    if app_url is None:
+        print("  URL: 离线无法确定（space 未包含 owner；以 Space 页面为准）")
+    else:
+        print(f"  URL: {app_url}")
+        print(f"  Admin URL: {app_url}/admin")
+    print("\nLogin")
+    print("  ADMIN_USERNAME: 已设置" if env_values.get("ADMIN_USERNAME") else "  ADMIN_USERNAME: 未设置")
+    print("  ADMIN_PASSWORD: 已设置" if env_values.get("ADMIN_PASSWORD") else "  ADMIN_PASSWORD: 未设置")
+    print("\nOperations")
+    print("  OPS_TOKEN: 已设置" if env_values.get("OPS_TOKEN") else "  OPS_TOKEN: 未设置")
+    print(f"  info 永不显示值；需要实际值时查看 {selected_env_file}")
+    secrets, optional_secrets, variables = registered_names(manifest)
+    if secrets or optional_secrets or variables:
+        print("\nRegistered")
+        for name in sorted(secrets):
+            print(f"  secret {name}: {'已设置' if env_values.get(name) else '未设置'}")
+        for name in sorted(optional_secrets):
+            print(f"  optional secret {name}: {'已设置' if env_values.get(name) else '未设置'}")
+        for name in sorted(variables):
+            print(f"  variable {name}: {'已设置' if env_values.get(name) else '未设置'}")
+    print("\nPrecedence")
+    print("  进程环境变量 > 项目 .env > config.toml > 程序内置默认值")
+    print("\nSources")
+    print(f"  值事实源: {selected_env_file}")
+    print("  非机密配置: config.toml")
+    print("  部署声明: hfs-dev.toml")
+    print("  wrapper 生成物: local/generated/（从标准 .env 生成，不作权威源）")
+    if debug:
+        mapping = env_map(manifest)
+        print("\nEnvironment map")
+        if mapping:
+            for source, target in sorted(mapping.items()):
+                print(f"  {source} -> {target}")
+        else:
+            print("  none")
+    return 0
+
+
+_CHECKER_MODULE: Any | None = None
+
+
+def load_checker_module() -> Any:
+    global _CHECKER_MODULE
+    if _CHECKER_MODULE is None:
+        checker_path = Path(__file__).resolve().parent / "check_hfs_alignment.py"
+        spec = importlib.util.spec_from_file_location("check_hfs_alignment", checker_path)
+        if spec is None or spec.loader is None:
+            raise SyncError(f"无法加载检查器：{checker_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CHECKER_MODULE = module
+    return _CHECKER_MODULE
+
+
+def cmd_check(root: Path, manifest_file: Path | None = None) -> int:
+    root = root.resolve()
+    if not root.is_dir():
+        raise SyncError(f"项目根不存在：{root}")
+    checker = load_checker_module()
+    return int(checker.check_root(root, manifest_file=manifest_file))
+
+
+def load_env(root: Path, env_file: Path = Path(".env")) -> dict[str, str]:
+    path = secure_plaintext_file(root, env_file, "env_file")
+    return parse_env_file(path)
+
+
 def string_list(manifest: dict[str, Any], field: str) -> list[str]:
     value = manifest.get(field, [])
     if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
@@ -180,6 +608,16 @@ def string_list(manifest: dict[str, Any], field: str) -> list[str]:
 def validate_slug(value: Any, field: str) -> str:
     if not isinstance(value, str) or not SAFE_SLUG.fullmatch(value):
         raise SyncError(f"{field} 必须是安全的单段名称：{value!r}")
+    return value
+
+
+def validate_space_id(value: Any) -> str:
+    if not isinstance(value, str) or not value:
+        raise SyncError("space 必须是非空字符串")
+    if not SPACE_ID.fullmatch(value):
+        raise SyncError(f"space ID 非法：{value!r}")
+    if "--" in value or ".." in value or value.endswith(".git"):
+        raise SyncError(f"space ID 非法：{value!r}")
     return value
 
 
@@ -199,17 +637,18 @@ def validate_setting_names(names: set[str], field: str) -> None:
 
 
 def validate_manifest(manifest: dict[str, Any]) -> None:
-    if str(manifest.get("standard", "")) != STANDARD:
-        raise SyncError(f'standard 必须为 "{STANDARD}"')
+    standard = str(manifest.get("standard", ""))
+    if standard in LEGACY_STANDARDS:
+        raise SyncError(
+            f"standard {standard!r} 已不再受支持；v3.0 正常运行只接受 standard = \"3.0\"。\n"
+            "请运行 hfs-dev check 查看迁移差距报告，并按 README「从 2.1/2.2 迁移」配方人工迁移。"
+        )
+    if standard not in SUPPORTED_STANDARDS:
+        supported = "、".join(sorted(SUPPORTED_STANDARDS))
+        raise SyncError(f"standard 必须是受支持版本：{supported}")
     validate_slug(manifest.get("project"), "project")
 
-    space = manifest.get("space")
-    if not isinstance(space, str) or not space:
-        raise SyncError("space 必须是非空字符串")
-    try:
-        validate_repo_id(space)
-    except Exception as exc:
-        raise SyncError(f"space ID 非法：{space!r}") from exc
+    validate_space_id(manifest.get("space"))
 
     sovereignty = manifest.get("sovereignty")
     if not isinstance(sovereignty, str) or sovereignty not in SOVEREIGNTIES:
@@ -220,6 +659,31 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
     version_source = manifest.get("version_source")
     if not isinstance(version_source, str) or version_source not in VERSION_SOURCES:
         raise SyncError("version_source 必须是 latest、tag 或 commit")
+    project_class = manifest.get("project_class")
+    if not isinstance(project_class, str) or project_class not in PROJECT_CLASSES:
+        raise SyncError("project_class 必须是 preview 或 production")
+    target_role = manifest.get("target_role")
+    if not isinstance(target_role, str) or target_role not in TARGET_ROLES:
+        raise SyncError("target_role 必须是 primary、rotation、candidate 或 restore")
+    space_visibility = manifest.get("space_visibility")
+    if not isinstance(space_visibility, str) or space_visibility not in SPACE_VISIBILITIES:
+        raise SyncError("space_visibility 必须是 protected")
+    bucket_visibility = manifest.get("bucket_visibility")
+    if not isinstance(bucket_visibility, str) or bucket_visibility not in BUCKET_VISIBILITIES:
+        raise SyncError("bucket_visibility 必须是 private")
+    validate_env_file_path(manifest.get("env_file"))
+    if "secret_files" in manifest:
+        raise SyncError(
+            "secret_files 已在 v3.0 移除：机密只登记在 .env；"
+            "确需原生结构化文件时，由 wrapper 从标准 .env 生成到 local/generated/"
+        )
+    if "env_map" in manifest:
+        raise SyncError(
+            "env_map 已移动到 [compat.env_map]；sovereign 项目禁止使用映射"
+        )
+    unknown_fields = sorted(set(manifest) - MANIFEST_ROOT_FIELDS)
+    if unknown_fields:
+        raise SyncError(f"hfs-dev manifest 含未知根字段：{unknown_fields}")
 
     if "bucket_namespace" in manifest:
         validate_slug(manifest["bucket_namespace"], "bucket_namespace")
@@ -253,6 +717,14 @@ def validate_manifest(manifest: dict[str, Any]) -> None:
             "本地控制凭据不能登记为 Space secret/optional secret/variable："
             f"{sorted(local_overlap)}"
         )
+    forbidden = [
+        f"{name}（{forbidden_key_reason(name)}）"
+        for name in sorted(secrets | optional_secrets | variables)
+        if forbidden_key_reason(name)
+    ]
+    if forbidden:
+        raise SyncError(f"v3.0 禁止登记的旧式键名：{'、'.join(forbidden)}")
+    validate_compat(manifest, secrets | optional_secrets | variables, sovereignty)
 
     seed_value = manifest.get("seed_file")
     other_objects = string_list(manifest, "other_objects")
@@ -275,6 +747,113 @@ def registered_names(manifest: dict[str, Any]) -> tuple[set[str], set[str], set[
     return secrets, optional_secrets, variables
 
 
+def env_map(manifest: dict[str, Any]) -> dict[str, str]:
+    compat = manifest.get("compat", {})
+    if not isinstance(compat, dict):
+        raise SyncError("hfs-dev manifest 的 [compat] 必须是 table")
+    value = compat.get("env_map", {})
+    if not isinstance(value, dict) or not all(
+        isinstance(source, str) and isinstance(target, str) and target
+        for source, target in value.items()
+    ):
+        raise SyncError("hfs-dev manifest 的 [compat.env_map] 必须是标准键到上游键的字符串映射")
+    return dict(value)
+
+
+def validate_compat(manifest: dict[str, Any], registered: set[str], sovereignty: str) -> None:
+    compat = manifest.get("compat", {})
+    if not isinstance(compat, dict):
+        raise SyncError("hfs-dev manifest 的 [compat] 必须是 table")
+    unknown_sections = sorted(set(compat) - {"env_map", "expires_after"})
+    if unknown_sections:
+        raise SyncError(f"[compat] 只允许 env_map 和 expires_after：{unknown_sections}")
+    expires = compat.get("expires_after")
+    if expires is not None and (not isinstance(expires, str) or not expires.strip()):
+        raise SyncError("[compat] expires_after 必须是非空字符串")
+    mapping = env_map(manifest)
+    validate_setting_names(set(mapping), "[compat.env_map] 源键")
+    validate_setting_names(set(mapping.values()), "[compat.env_map] 目标键")
+    unknown = sorted(set(mapping) - registered)
+    if unknown:
+        raise SyncError(f"[compat.env_map] 只能映射已登记的 Secret/Variable 键：{unknown}")
+    targets: dict[str, str] = {}
+    for source in sorted(registered):
+        target = mapping.get(source, source)
+        previous = targets.get(target)
+        if previous is not None and previous != source:
+            raise SyncError(f"[compat.env_map] 目标键重复：{previous}、{source} -> {target}")
+        targets[target] = source
+    if mapping and sovereignty == "sovereign":
+        raise SyncError(
+            "sovereign 项目禁止使用 [compat.env_map]；只有 fork/port 可在过渡期内映射上游键"
+        )
+
+
+def remote_setting_name(manifest: dict[str, Any], local_name: str) -> str:
+    return env_map(manifest).get(local_name, local_name)
+
+
+def remote_setting_names(manifest: dict[str, Any], local_names: set[str]) -> set[str]:
+    return {remote_setting_name(manifest, name) for name in local_names}
+
+
+def manifest_env_file(manifest: dict[str, Any], override: Path | None = None) -> Path:
+    declared = Path(validate_env_file_path(manifest.get("env_file")))
+    if override is not None and override != declared:
+        raise SyncError(
+            f"--env-file 必须与 manifest 的 env_file 一致：声明 {declared}，收到 {override}"
+        )
+    return declared
+
+
+def env_key_names(path: Path) -> set[str]:
+    names: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+        key = line.partition("=")[0].strip()
+        if ENV_KEY.fullmatch(key):
+            names.add(key)
+    return names
+
+
+def declared_profile_env_files(root: Path) -> set[Path]:
+    declared: set[Path] = set()
+    for manifest_path in root.glob("hfs-dev*.toml"):
+        try:
+            with manifest_path.open("rb") as file:
+                manifest = tomllib.load(file)
+            relative = Path(validate_env_file_path(manifest.get("env_file")))
+            declared.add(resolve_local_file(root, relative, "env_file"))
+        except (OSError, SyncError, tomllib.TOMLDecodeError):
+            continue
+    return declared
+
+
+def conflicting_env_sources(
+    root: Path,
+    declared: Path,
+    registered: set[str],
+) -> list[str]:
+    candidates = list(root.glob(".env*")) + list((root / "local" / "hfs-targets").glob("*.env"))
+    conflicts: list[str] = []
+    declared_path = resolve_local_file(root, declared, "env_file")
+    profile_paths = declared_profile_env_files(root)
+    for candidate in candidates:
+        if candidate.name.endswith((".example", ".sample", ".template")):
+            continue
+        if candidate.resolve() == declared_path or candidate.resolve() in profile_paths or not candidate.is_file():
+            continue
+        if env_key_names(candidate) & registered:
+            conflicts.append(str(candidate.relative_to(root)))
+    return sorted(set(conflicts))
+
+
 def hf_token(env_values: dict[str, str]) -> str:
     token = env_values.get("HF_TOKEN", "").strip()
     if not token:
@@ -283,6 +862,8 @@ def hf_token(env_values: dict[str, str]) -> str:
 
 
 def api_client(token: str) -> HfApi:
+    from huggingface_hub import HfApi
+
     return HfApi(token=token)
 
 
@@ -324,7 +905,119 @@ def instance_uri(manifest: dict[str, Any], storage_owner: str) -> str | None:
     return f"hf://buckets/{storage_owner}/{bucket}/{str(object_name).lstrip('/')}"
 
 
+def registered_bucket_ids(manifest: dict[str, Any], storage_owner: str) -> list[str]:
+    names: set[str] = set()
+    if (
+        "dist_bucket" in manifest
+        or manifest.get("lane") == "artifact"
+        or manifest.get("seed_file") not in (None, "")
+    ):
+        names.add(str(manifest.get("dist_bucket", DEFAULT_DIST_BUCKET)))
+    mount_bucket = manifest.get("mount_config_bucket")
+    if isinstance(mount_bucket, str) and mount_bucket:
+        names.add(mount_bucket)
+    return [f"{storage_owner}/{name}" for name in sorted(names)]
+
+
+def space_visibility(api: HfApi, space: str, token: str) -> str:
+    namespace = space.split("/", 1)[0]
+    token_owner = token_namespace(api, token)
+    kwargs: dict[str, Any] = {"token": token}
+    if namespace.casefold() != token_owner.casefold():
+        kwargs["namespace"] = namespace
+    try:
+        repos = api.list_user_repos(**kwargs)
+        match = next(
+            (
+                repo
+                for repo in repos
+                if getattr(repo, "id", None) == space and getattr(repo, "type", None) == "space"
+            ),
+            None,
+        )
+    except Exception as exc:
+        raise SyncError(f"Space visibility 读取失败：{space}") from exc
+    visibility = getattr(match, "visibility", None)
+    if not isinstance(visibility, str) or not visibility:
+        raise SyncError(f"Space visibility 读回缺失：{space}")
+    return visibility
+
+
+def bucket_is_private(api: HfApi, bucket_id: str, token: str) -> bool:
+    try:
+        info = api.bucket_info(bucket_id, token=token)
+    except Exception as exc:
+        raise SyncError(f"bucket visibility 读取失败：{bucket_id}") from exc
+    private = getattr(info, "private", None)
+    if not isinstance(private, bool):
+        raise SyncError(f"bucket visibility 读回缺失：{bucket_id}")
+    return private
+
+
+def visibility_drift(
+    api: HfApi,
+    manifest: dict[str, Any],
+    space: str,
+    storage_owner: str,
+    token: str,
+) -> list[str]:
+    findings: list[str] = []
+    actual_space_visibility = space_visibility(api, space, token)
+    expected_space_visibility = manifest["space_visibility"]
+    if actual_space_visibility != expected_space_visibility:
+        findings.append(
+            f"Space {space}: {actual_space_visibility} != {expected_space_visibility}"
+        )
+    expected_bucket_visibility = manifest["bucket_visibility"]
+    for bucket_id in registered_bucket_ids(manifest, storage_owner):
+        actual_bucket_visibility = "private" if bucket_is_private(api, bucket_id, token) else "public"
+        if actual_bucket_visibility != expected_bucket_visibility:
+            findings.append(
+                f"bucket {bucket_id}: {actual_bucket_visibility} != {expected_bucket_visibility}"
+            )
+    return findings
+
+
+def reconcile_visibility(
+    api: HfApi,
+    manifest: dict[str, Any],
+    space: str,
+    storage_owner: str,
+    token: str,
+) -> None:
+    expected_bucket_visibility = manifest["bucket_visibility"]
+    bucket_findings = []
+    for bucket_id in registered_bucket_ids(manifest, storage_owner):
+        actual = "private" if bucket_is_private(api, bucket_id, token) else "public"
+        if actual != expected_bucket_visibility:
+            bucket_findings.append(f"{bucket_id}={actual}")
+    if bucket_findings:
+        raise SyncError(
+            "bucket 必须先手工调整为 private，未执行任何 Space 写入："
+            f"{bucket_findings}"
+        )
+
+    expected_space_visibility = manifest["space_visibility"]
+    if space_visibility(api, space, token) != expected_space_visibility:
+        api.update_repo_settings(
+            space,
+            repo_type="space",
+            visibility=expected_space_visibility,
+            token=token,
+        )
+        if space_visibility(api, space, token) != expected_space_visibility:
+            raise SyncError(
+                f"Space visibility 读回失败：{space} 未稳定为 {expected_space_visibility}"
+            )
+        print(f"Space visibility 已调整并读回：{expected_space_visibility}")
+    else:
+        print(f"Space visibility 已符合：{expected_space_visibility}")
+    print(f"bucket visibility 读回通过：{expected_bucket_visibility}")
+
+
 def space_secret_names(space: str, token: str) -> set[str]:
+    from huggingface_hub.utils import build_hf_headers
+
     request = urllib.request.Request(
         f"https://huggingface.co/api/spaces/{space}/secrets",
         headers=build_hf_headers(token=token),
@@ -645,7 +1338,7 @@ def report(title: str, items: list[str]) -> int:
 def preflight(
     root: Path,
     manifest_file: Path = Path("hfs-dev.toml"),
-    env_file: Path = Path(".env"),
+    env_file: Path | None = None,
     *,
     for_push: bool = False,
 ) -> tuple[
@@ -660,7 +1353,8 @@ def preflight(
     root = root.resolve()
     manifest = load_manifest(root, manifest_file)
     validate_manifest(manifest)
-    env_values = load_env(root, env_file)
+    selected_env_file = manifest_env_file(manifest, env_file)
+    env_values = load_env(root, selected_env_file)
     token = hf_token(env_values)
     secrets, optional_secrets, variables = registered_names(manifest)
     missing = sorted(name for name in secrets | variables if not env_values.get(name, ""))
@@ -676,6 +1370,13 @@ def preflight(
         raise SyncError(
             f"env 文件中的 Secret/Variable 仍是占位符，未执行任何写操作：{placeholder_settings}"
         )
+    duplicate_sources = conflicting_env_sources(
+        root,
+        selected_env_file,
+        secrets | optional_secrets | variables | local_only_names(manifest),
+    )
+    if duplicate_sources:
+        raise SyncError(f"发现包含登记键的第二 env 事实源：{duplicate_sources}")
     protected_values = protected_secret_values(env_values, manifest)
     variable_findings: list[str] = []
     for name in sorted(variables):
@@ -734,7 +1435,7 @@ def resolve_targets(api: HfApi, manifest: dict[str, Any], token: str) -> tuple[s
 def cmd_diff(
     root: Path,
     manifest_file: Path = Path("hfs-dev.toml"),
-    env_file: Path = Path(".env"),
+    env_file: Path | None = None,
 ) -> int:
     root = root.resolve()
     (
@@ -751,25 +1452,41 @@ def cmd_diff(
     api.space_info(space, token=token)
 
     differences = 0
+    differences += report(
+        "Space/registered bucket visibility 不一致",
+        visibility_drift(api, manifest, space, storage_owner, token),
+    )
     present_optional_secrets = configured_optional_secrets(env_values, optional_secrets)
-    managed_secrets = secrets | optional_secrets
-    expected_secrets = secrets | present_optional_secrets
-    registered = managed_secrets | variables
+    declared_secrets = remote_setting_names(manifest, secrets | optional_secrets)
+    expected_secrets = remote_setting_names(manifest, secrets | present_optional_secrets)
+    remote_variables_expected = remote_setting_names(manifest, variables)
+    registered = secrets | optional_secrets | variables
     deployable_env = set(env_values) - local_only_names(manifest)
     differences += report("env 有但未登记", sorted(deployable_env - registered))
 
     remote_secrets = space_secret_names(space, token)
     remote_variables = api.get_space_variables(space, token=token)
-    differences += report("远端多出 secret", sorted(remote_secrets - managed_secrets))
+    differences += report("远端多出 secret", sorted(remote_secrets - declared_secrets))
+    differences += report(
+        "远端 optional secret 缺少本地明文值",
+        sorted(
+            remote_setting_names(
+                manifest,
+                optional_secrets - present_optional_secrets,
+            )
+            & remote_secrets
+        ),
+    )
     differences += report("远端缺 secret", sorted(expected_secrets - remote_secrets))
-    differences += report("远端多出 variable", sorted(set(remote_variables) - variables))
-    differences += report("远端缺 variable", sorted(variables - set(remote_variables)))
+    differences += report("远端多出 variable", sorted(set(remote_variables) - remote_variables_expected))
+    differences += report("远端缺 variable", sorted(remote_variables_expected - set(remote_variables)))
     differences += report(
         "variable 值不一致",
         sorted(
-            name
-            for name in variables & set(remote_variables)
-            if remote_variables[name].value != env_values[name]
+            remote_setting_name(manifest, name)
+            for name in variables
+            if remote_setting_name(manifest, name) in remote_variables
+            and remote_variables[remote_setting_name(manifest, name)].value != env_values[name]
         ),
     )
 
@@ -842,7 +1559,8 @@ def cmd_push(
     prune: bool,
     yes: bool,
     manifest_file: Path = Path("hfs-dev.toml"),
-    env_file: Path = Path(".env"),
+    env_file: Path | None = None,
+    production_confirmed: bool = False,
 ) -> int:
     root = root.resolve()
     if prune and not yes:
@@ -856,19 +1574,33 @@ def cmd_push(
         variables,
         local_seed,
     ) = preflight(root, manifest_file, env_file, for_push=True)
+    if manifest["project_class"] == "production" and not production_confirmed:
+        raise SyncError("production 项目 push 必须显式传 --production-confirmed")
     api = api_client(token)
     space, storage_owner = resolve_targets(api, manifest, token)
     api.space_info(space, token=token)
 
     present_optional_secrets = configured_optional_secrets(env_values, optional_secrets)
     pushed_secrets = secrets | present_optional_secrets
-    managed_secrets = secrets | optional_secrets
+    pushed_remote_secrets = remote_setting_names(manifest, pushed_secrets)
+    remote_variables_expected = remote_setting_names(manifest, variables)
+    if not prune:
+        remote_without_local_values = space_secret_names(space, token) - pushed_remote_secrets
+        if remote_without_local_values:
+            raise SyncError(
+                "远端 Secret 缺少本地明文值，未执行任何写操作；"
+                "请先补入 manifest/env，或显式使用 --prune --yes 删除；"
+                f"仅列出键名：{sorted(remote_without_local_values)}"
+            )
+    reconcile_visibility(api, manifest, space, storage_owner, token)
     for name in sorted(pushed_secrets):
-        api.add_space_secret(space, name, env_values[name], token=token)
-        print(f"secret 已推送：{name}")
+        remote_name = remote_setting_name(manifest, name)
+        api.add_space_secret(space, remote_name, env_values[name], token=token)
+        print(f"secret 已推送：{remote_name}")
     for name in sorted(variables):
-        api.add_space_variable(space, name, env_values[name], token=token)
-        print(f"variable 已推送：{name}")
+        remote_name = remote_setting_name(manifest, name)
+        api.add_space_variable(space, remote_name, env_values[name], token=token)
+        print(f"variable 已推送：{remote_name}")
 
     if local_seed is not None:
         destination = seed_uri(storage_owner, manifest, local_seed)
@@ -883,32 +1615,42 @@ def cmd_push(
     if prune:
         remote_secrets = space_secret_names(space, token)
         remote_variables = api.get_space_variables(space, token=token)
-        for name in sorted(remote_secrets - managed_secrets):
+        for name in sorted(remote_secrets - pushed_remote_secrets):
             api.delete_space_secret(space, name, token=token)
             print(f"secret 已删除：{name}")
-        for name in sorted(set(remote_variables) - variables):
+        for name in sorted(set(remote_variables) - remote_variables_expected):
             api.delete_space_variable(space, name, token=token)
             print(f"variable 已删除：{name}")
 
     remote_secrets = space_secret_names(space, token)
     remote_variables = api.get_space_variables(space, token=token)
-    missing_names = (pushed_secrets - remote_secrets) | (variables - set(remote_variables))
+    visibility_findings = visibility_drift(api, manifest, space, storage_owner, token)
+    missing_names = (pushed_remote_secrets - remote_secrets) | (
+        remote_variables_expected - set(remote_variables)
+    )
     value_drift = {
-        name
-        for name in variables & set(remote_variables)
-        if remote_variables[name].value != env_values[name]
+        remote_setting_name(manifest, name)
+        for name in variables
+        if remote_setting_name(manifest, name) in remote_variables
+        and remote_variables[remote_setting_name(manifest, name)].value != env_values[name]
     }
-    extras = set()
+    secret_extras = remote_secrets - pushed_remote_secrets
+    variable_extras = set()
     if prune:
-        extras = (remote_secrets - managed_secrets) | (set(remote_variables) - variables)
-    if missing_names or value_drift or extras:
+        variable_extras = set(remote_variables) - remote_variables_expected
+    if missing_names or value_drift or secret_extras or variable_extras or visibility_findings:
         raise SyncError(
             "读回校验失败："
             f"缺少名称 {sorted(missing_names)}；"
             f"variable 值不一致 {sorted(value_drift)}；"
-            f"prune 后多余项 {sorted(extras)}"
+            f"无本地明文值的 secret {sorted(secret_extras)}；"
+            f"prune 后多余 variable {sorted(variable_extras)}；"
+            f"visibility 不一致 {visibility_findings}"
         )
-    print("读回校验通过（secret 比名称，variable 比值，种子比内容）")
+    print(
+        "读回校验通过（Space=protected，bucket=private，"
+        "secret 比名称，variable 比值，种子比内容）"
+    )
     return 0
 
 
@@ -1259,12 +2001,13 @@ def cleanup_staging_at(
 def cmd_pull(
     root: Path,
     manifest_file: Path = Path("hfs-dev.toml"),
-    env_file: Path = Path(".env"),
+    env_file: Path | None = None,
 ) -> int:
     root = root.resolve()
     manifest = load_manifest(root, manifest_file)
     validate_manifest(manifest)
-    env_values = load_env(root, env_file)
+    selected_env_file = manifest_env_file(manifest, env_file)
+    env_values = load_env(root, selected_env_file)
     token = hf_token(env_values)
     api = api_client(token)
     space, storage_owner = resolve_targets(api, manifest, token)
@@ -1378,7 +2121,6 @@ def cmd_pull(
                 cleanup_error = cleanup_error or exc
         if cleanup_error is not None and not primary_exception_active:
             raise SyncError("pull staging 清理失败") from cleanup_error
-
     relative = downloaded.relative_to(root)
     print(f"实例配置已回收：{relative}（来源 {runtime_uri}）")
     if sensitive:
@@ -1389,24 +2131,77 @@ def cmd_pull(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["diff", "push", "pull"])
+    parser.add_argument("command", choices=["init", "info", "check", "diff", "push", "pull"])
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="项目根目录（默认当前目录）")
     parser.add_argument("--manifest", type=Path, default=Path("hfs-dev.toml"), help="manifest 路径")
-    parser.add_argument("--env-file", type=Path, default=Path(".env"), help="本地 env 文件路径")
+    parser.add_argument(
+        "--env-file",
+        type=Path,
+        default=None,
+        help="兼容参数；必须与 manifest 的 env_file 完全一致",
+    )
     parser.add_argument("--prune", action="store_true", help="push 时删除远端多余设置；默认不删除")
     parser.add_argument("--yes", action="store_true", help="确认执行 --prune 的远端删除")
+    parser.add_argument(
+        "--production-confirmed",
+        action="store_true",
+        help="显式确认 production 项目 push；preview 不需要",
+    )
+    parser.add_argument("--names-only", action="store_true", help="兼容参数；info 永不显示值")
+    parser.add_argument("--debug", action="store_true", help="info 额外显示 [compat.env_map]")
     args = parser.parse_args()
     root = args.root.resolve()
 
     try:
+        if args.command == "init":
+            if (
+                args.env_file is not None
+                or args.prune
+                or args.yes
+                or args.production_confirmed
+                or args.names_only
+                or args.debug
+            ):
+                raise SyncError("--env-file/--prune/--yes/--production-confirmed/--names-only/--debug 不适用于 init")
+            return cmd_init(root, args.manifest)
+        if args.command == "info":
+            if args.prune or args.yes or args.production_confirmed:
+                raise SyncError("--prune/--yes/--production-confirmed 不适用于 info")
+            return cmd_info(
+                root,
+                args.manifest,
+                args.env_file,
+                names_only=args.names_only,
+                debug=args.debug,
+            )
+        if args.command == "check":
+            if (
+                args.env_file is not None
+                or args.prune
+                or args.yes
+                or args.production_confirmed
+                or args.names_only
+                or args.debug
+            ):
+                raise SyncError("check 只接受 --root 与 --manifest；其余参数不适用")
+            return cmd_check(root, args.manifest)
         if args.command == "diff":
-            if args.prune or args.yes:
-                raise SyncError("--prune/--yes 只适用于 push")
+            if args.prune or args.yes or args.production_confirmed or args.names_only or args.debug:
+                raise SyncError("--prune/--yes/--production-confirmed/--names-only/--debug 不适用于 diff")
             return cmd_diff(root, args.manifest, args.env_file)
         if args.command == "push":
-            return cmd_push(root, args.prune, args.yes, args.manifest, args.env_file)
-        if args.prune or args.yes:
-            raise SyncError("--prune/--yes 只适用于 push")
+            if args.names_only or args.debug:
+                raise SyncError("--names-only/--debug 只适用于 info")
+            return cmd_push(
+                root,
+                args.prune,
+                args.yes,
+                args.manifest,
+                args.env_file,
+                args.production_confirmed,
+            )
+        if args.prune or args.yes or args.production_confirmed or args.names_only or args.debug:
+            raise SyncError("--prune/--yes/--production-confirmed/--names-only/--debug 不适用于 pull")
         return cmd_pull(root, args.manifest, args.env_file)
     except (SyncError, OSError, KeyError, subprocess.SubprocessError) as exc:
         print(f"ERROR：{exc}", file=sys.stderr)

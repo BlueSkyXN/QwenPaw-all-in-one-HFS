@@ -6,7 +6,7 @@
 
 ```text
 Pattern A: HFS Port Repository
-HFS v2: sovereignty = "port", lane = "source", version_source = "commit"
+HFS v3.0: project_class = "preview", target_role = "primary", sovereignty = "port", lane = "source", version_source = "commit"
 Space root: repo root
 Source of truth: Dockerfile's pinned upstream QwenPaw source commit
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
@@ -14,6 +14,11 @@ Semantic registry: hfs-dev.toml
 ```
 
 This repository is not the upstream QwenPaw product source. It is the Hugging Face Docker Space delivery package for QwenPaw.
+
+Routine Preview changes may update the canonical Space directly. The candidate profile is an
+optional isolated target for high-risk validation, not a mandatory promotion step. Secret values
+must originate in the manifest-declared Git-ignored plaintext ledger before they are copied to a
+Space; canonical and candidate ledgers are intentionally separate.
 
 ## Directory Ownership
 

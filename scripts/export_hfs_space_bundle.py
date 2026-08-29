@@ -31,21 +31,25 @@ FORMAL_SPACE_URL = f"https://huggingface.co/spaces/{FORMAL_SPACE}"
 FORMAL_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs.hf.space"
 
 CANDIDATE_MANIFEST = "hfs-dev.candidate.toml"
-CANDIDATE_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate"
+CANDIDATE_SPACE = "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate"
 CANDIDATE_SPACE_URL = f"https://huggingface.co/spaces/{CANDIDATE_SPACE}"
-CANDIDATE_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space"
+CANDIDATE_LIVE_URL = "https://blueskyxn-qwenpaw-all-in-one-hfs-v3-candidate.hf.space"
 
 PROFILE_NAMES = ("candidate", "formal")
 PROFILES: dict[str, dict[str, str]] = {
     "candidate": {
         "manifest": CANDIDATE_MANIFEST,
         "space": CANDIDATE_SPACE,
+        "target_role": "candidate",
+        "env_file": "local/hfs-targets/candidate.env",
         "space_url": CANDIDATE_SPACE_URL,
         "live_url": CANDIDATE_LIVE_URL,
     },
     "formal": {
         "manifest": FORMAL_MANIFEST,
         "space": FORMAL_SPACE,
+        "target_role": "primary",
+        "env_file": ".env",
         "space_url": FORMAL_SPACE_URL,
         "live_url": FORMAL_LIVE_URL,
     },
@@ -91,8 +95,11 @@ BUILD_SOURCE_KEYS = {
     *DOCKER_BUILD_ARGS.values(),
 }
 EXPECTED_MANIFEST_SCALARS = {
-    "standard": "2.0",
+    "standard": "3.0",
     "project": "qwenpaw-all-in-one-hfs",
+    "project_class": "preview",
+    "space_visibility": "protected",
+    "bucket_visibility": "private",
     "sovereignty": "port",
     "lane": "source",
     "version_source": "commit",
@@ -219,10 +226,17 @@ def _validate_manifest(raw: bytes, profile_name: str) -> None:
         manifest = tomllib.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
         raise BundleError("selected manifest is not valid UTF-8 TOML") from exc
-    expected = {**EXPECTED_MANIFEST_SCALARS, "space": profile["space"]}
+    expected = {
+        **EXPECTED_MANIFEST_SCALARS,
+        "space": profile["space"],
+        "target_role": profile["target_role"],
+        "env_file": profile["env_file"],
+    }
     for key, value in expected.items():
         if manifest.get(key) != value:
             raise BundleError(f"selected manifest has an unexpected {key}")
+    if "secret_files" in manifest:
+        raise BundleError("selected HFS v3.0 manifest must not declare secret_files")
 
 
 def _build_source(source_commit: str, dockerfile: str, profile_name: str) -> dict[str, Any]:

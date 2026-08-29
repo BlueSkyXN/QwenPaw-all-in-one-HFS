@@ -13,6 +13,19 @@ pinned: false
 
 This repository is a **Pattern A HFS Port Repository** for running QwenPaw on Hugging Face Docker Space.
 
+## HFS v3.0 Preview Contract
+
+This project is explicitly `project_class = "preview"`. The canonical
+`hfs-dev.toml` target is `target_role = "primary"` and may be updated directly for
+routine Preview changes; no candidate, promotion, or Release step is a default prerequisite.
+`hfs-dev.candidate.toml` remains available only as an optional isolated check for high-risk
+changes.
+
+Every Space Secret must originate in the Git-ignored plaintext file declared by the selected
+manifest. The canonical profile uses `.env`; the optional candidate uses
+`local/hfs-targets/candidate.env`. Hugging Face Secrets are deployment copies and must not be
+the only recoverable source. Neither local value file belongs in Git or the Docker context.
+
 It is not the upstream QwenPaw product source. It maintains the Hugging Face Space delivery package:
 
 - root-level Space card and Dockerfile
@@ -48,13 +61,13 @@ Start with [`docs/README.md`](docs/README.md). The main operator documents are:
 
 ```text
 Pattern: A - HFS Port Repository
-HFS v2 manifest: sovereignty=port, lane=source, version_source=commit
+HFS v3.0 manifest: project_class=preview, target_role=primary, sovereignty=port, lane=source, version_source=commit
 Space root: repo root
 Source of truth: Dockerfile's fixed upstream QwenPaw commit and matching console bundle pins
 Maintained here: HFS runtime glue, Nginx, Supervisor, ops/admin, docs, smoke and CI
 ```
 
-`hfs-dev.toml` is a semantic HFS v2 registry: it records the project, Space, source lane,
+`hfs-dev.toml` is a semantic HFS v3.0 registry: it records the Preview class, target role, project, Space, source lane,
 version-source choice, and environment-key ownership only. The Dockerfile,
 `scripts/check-qwenpaw-pins.py`, `scripts/build-console-bundle.sh`, and the manual bundle
 workflow are the evidence for immutable pins and the matching console bundle. That bundle is
@@ -96,8 +109,8 @@ python3 -m huggingface_hub.cli.hf spaces info \
   <namespace>/<space-name> --expand runtime
 ```
 
-`huggingface_hub==1.5.0` does not expose Space volume mutation through its module CLI.
-Attach the bucket through the reviewed HFS provisioner or Hugging Face Settings, then
+The repository workflows do not mutate Space volumes. Attach the bucket through the reviewed
+HFS provisioner or Hugging Face Settings, then
 use the `spaces info --expand runtime` readback above to verify the `/data` mount. A
 volume update replaces the complete mount list, so the provisioner must submit every
 required mount rather than only the new bucket.
@@ -135,7 +148,7 @@ Recommended Secrets:
 
 ```env
 OPS_TOKEN=<strong-random-token>
-ADMIN_TOKEN=<strong-random-token-if-admin-enabled>
+ADMIN_PASSWORD=<strong-random-token-if-admin-enabled>
 ADMIN_CSRF_TOKEN=<strong-random-csrf-token-if-admin-enabled>
 DASHSCOPE_API_KEY=<optional>
 OPENAI_API_KEY=<optional>
@@ -146,8 +159,9 @@ DISCORD_BOT_TOKEN=<optional>
 
 `OPS_TOKEN` is the only unconditionally required Secret in the HFS Settings manifest.
 The admin, provider, and channel Secrets are registered under `optional_secrets`: an empty
-local value is not pushed and does not make `diff` fail, while any non-empty value must not
-be a placeholder. `ADMIN_TOKEN` and `ADMIN_CSRF_TOKEN` become operationally required when
+local value is not pushed, but a remote value with no local plaintext is reported as drift;
+normal `push` refuses that state and `--prune --yes` deletes it. Any non-empty value must not
+be a placeholder. `ADMIN_PASSWORD` and `ADMIN_CSRF_TOKEN` become operationally required when
 `ADMIN_ENABLED=true`.
 
 `/_ops/config` reports only secret presence booleans, never secret values.
@@ -177,20 +191,23 @@ OPS_TOKEN=<same value configured in Hugging Face Space Settings>
 For first-run browser verification, keep the admin login test record local-only:
 
 ```env
-QWENPAW_ADMIN_USERNAME=<local-test-admin-name>
-QWENPAW_ADMIN_PASSWORD=<local-test-admin-password>
+ADMIN_USERNAME=<local-test-admin-name>
+ADMIN_PASSWORD=<local-test-admin-password>
 ```
 
 Do not commit `.env`, `.env.local`, screenshots, runtime data, logs, databases, keys or exported secrets. They are ignored by `.gitignore` and `.dockerignore`.
 
 ## Fixed-Profile Bundles and Manual Deploy Workflows
 
+This candidate flow is optional for high-risk Preview changes. Routine Preview work may update
+the canonical Space directly and does not have to pass through this workflow first.
+
 Candidate repository publication uses `.github/workflows/deploy-hf-space.yml`; it never
 pushes the GitHub repository root directly. The workflow accepts only a 40-character
 `source_ref` equal to the dispatched GitHub `main` SHA and current `origin/main`, plus the
 literal confirmation `PUBLISH_CANDIDATE`. It exports `hfs-dev.candidate.toml` as the
 bundle's `hfs-dev.toml` and fixes the target to the existing private Space
-`BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate`.
+`BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate`.
 
 `scripts/export_hfs_space_bundle.py` accepts only the `candidate` and `formal` enum profiles;
 neither profile accepts an owner, repository, manifest, or Space override. Both bundles use
@@ -300,7 +317,7 @@ After successful token validation, the service sets a signed HttpOnly cookie for
 
 ```env
 ADMIN_ENABLED=true
-ADMIN_TOKEN=<strong-random-token>
+ADMIN_PASSWORD=<strong-random-token>
 ADMIN_CSRF_TOKEN=<strong-random-csrf-token>
 ```
 
@@ -350,6 +367,6 @@ live/authenticated smoke and existing-account persistence passed
 
 Only then treat the Space as updated.
 
-## Production Boundary
+## Preview Boundary
 
-This is an HFS demo / personal deployment package. It is not a high-availability production architecture. For sensitive use, keep the Space private/protected, enable authentication, configure strong tokens and review `docs/security.md`.
+This is an HFS demo / personal Preview deployment package. It is not a high-availability production architecture. For sensitive use, keep the Space private/protected, enable authentication, configure strong tokens and review `docs/security.md`.

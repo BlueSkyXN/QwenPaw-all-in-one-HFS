@@ -77,7 +77,7 @@ require_file docker/healthcheck.sh
 require_file scripts/admin-smoke.sh
 require_file scripts/check-qwenpaw-pins.py
 require_file scripts/hf-space-smoke.sh
-require_file scripts/hf_space_sync.py
+require_file scripts/hfs_dev.py
 require_file scripts/export_hfs_space_bundle.py
 require_file scripts/export_space_bundle.py
 require_file scripts/test_release_tools.py
@@ -99,12 +99,17 @@ raw = manifest_path.read_text(encoding="utf-8")
 manifest = tomllib.loads(raw)
 
 expected_scalars = {
-    "standard": "2.0",
+    "standard": "3.0",
     "project": "qwenpaw-all-in-one-hfs",
     "space": "BlueSkyXN/QwenPaw-all-in-one-HFS",
+    "project_class": "preview",
+    "target_role": "primary",
+    "space_visibility": "protected",
+    "bucket_visibility": "private",
     "sovereignty": "port",
     "lane": "source",
     "version_source": "commit",
+    "env_file": ".env",
 }
 expected_lists = {
     "local_only": {
@@ -116,16 +121,14 @@ expected_lists = {
         "HF_PUBLIC_URL",
         "HF_STORAGE_BUCKET",
         "SMOKE_BASE_URL",
-        "QWENPAW_ADMIN_USERNAME",
-        "QWENPAW_ADMIN_PASSWORD",
         "ADMIN_EXPECTED_ENABLED",
-        "ADMIN_SMOKE_ACTIONS",
+        "SMOKE_ADMIN_ACTIONS",
     },
     "secrets": {
         "OPS_TOKEN",
     },
     "optional_secrets": {
-        "ADMIN_TOKEN",
+        "ADMIN_PASSWORD",
         "ADMIN_CSRF_TOKEN",
         "DASHSCOPE_API_KEY",
         "OPENAI_API_KEY",
@@ -134,6 +137,7 @@ expected_lists = {
         "DISCORD_BOT_TOKEN",
     },
     "variables": {
+        "ADMIN_USERNAME",
         "PORT",
         "QWENPAW_PORT",
         "QWENPAW_WORKING_DIR",
@@ -164,7 +168,7 @@ for key, value in expected_scalars.items():
 
 unexpected_keys = sorted(set(manifest) - allowed_keys)
 if unexpected_keys:
-    failures.append("hfs-dev.toml must remain the minimal v2 semantic manifest; unexpected keys: " + ", ".join(unexpected_keys))
+    failures.append("hfs-dev.toml must remain the minimal v3 semantic manifest; unexpected keys: " + ", ".join(unexpected_keys))
 
 seen_categories: dict[str, set[str]] = {}
 for field, expected in expected_lists.items():
@@ -241,13 +245,17 @@ import tomllib
 from pathlib import Path
 
 root = Path(sys.argv[1])
-production = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
+primary = tomllib.loads((root / "hfs-dev.toml").read_text(encoding="utf-8"))
 candidate = tomllib.loads((root / "hfs-dev.candidate.toml").read_text(encoding="utf-8"))
-if candidate.get("space") != "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate":
+if candidate.get("space") != "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate":
     raise SystemExit("candidate manifest has the wrong fixed Space id")
-for key in sorted(set(production) | set(candidate)):
-    if key != "space" and production.get(key) != candidate.get(key):
-        raise SystemExit(f"candidate manifest differs from production at {key}")
+if candidate.get("project_class") != "preview" or candidate.get("target_role") != "candidate":
+    raise SystemExit("candidate manifest must remain an optional preview candidate")
+if candidate.get("env_file") != "local/hfs-targets/candidate.env":
+    raise SystemExit("candidate manifest must use its isolated local plaintext ledger")
+for key in sorted(set(primary) | set(candidate)):
+    if key not in {"space", "target_role", "env_file"} and primary.get(key) != candidate.get(key):
+        raise SystemExit(f"candidate manifest differs from primary at {key}")
 PY_VALIDATE_PROFILE
 
 python3 - "$repo_root" <<'PY_VALIDATE_RELEASE_PROFILES'
@@ -261,7 +269,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 failures: list[str] = []
 expected_spaces = {
-    "candidate": "BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate",
+    "candidate": "BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate",
     "formal": "BlueSkyXN/QwenPaw-all-in-one-HFS",
 }
 expected_manifests = {
@@ -332,17 +340,17 @@ formal_samples = {
 patterns = namespace.get("FORMAL_TARGET_PATTERNS", ())
 for sample in formal_samples:
     if not any(pattern.search(sample) for pattern in patterns):
-        failures.append(f"candidate exporter lacks a production-target leak guard for {sample}")
+        failures.append(f"candidate exporter lacks a canonical-primary-target leak guard for {sample}")
 candidate_samples = {
     f'space = "{expected_spaces["candidate"]}"',
     f"https://huggingface.co/spaces/{expected_spaces['candidate']}",
-    "https://blueskyxn-qwenpaw-all-in-one-hfs-v2-candidate.hf.space",
+    "https://blueskyxn-qwenpaw-all-in-one-hfs-v3-candidate.hf.space",
     f"HF_SPACE_ID={expected_spaces['candidate']}",
     "https://github.com/BlueSkyXN/QwenPaw-all-in-one-HFS",
 }
 for sample in candidate_samples:
     if any(pattern.search(sample) for pattern in patterns):
-        failures.append(f"production-target leak guard incorrectly rejects an allowed candidate/source value: {sample}")
+        failures.append(f"canonical-primary-target leak guard incorrectly rejects an allowed candidate/source value: {sample}")
 
 candidate_workflow = (root / ".github" / "workflows" / "deploy-hf-space.yml").read_text(encoding="utf-8")
 candidate_markers = {
@@ -353,11 +361,12 @@ candidate_markers = {
     "contents: read": "candidate deploy must keep GitHub permissions read-only",
     "environment: hfs-candidate": "candidate deploy must use the hfs-candidate environment",
     f"CANDIDATE_SPACE: {expected_spaces['candidate']}": "candidate deploy must fix the target Space",
-    'HF_CLI_VERSION: "1.5.0"': "candidate deploy must pin huggingface_hub 1.5.0",
-    'HF_CLI_CLICK_VERSION: "8.3.3"': "candidate deploy must pin click 8.3.3",
+    'HF_CLI_VERSION: "1.25.1"': "candidate deploy must pin Protected-compatible huggingface_hub 1.25.1",
+    'HF_CLI_CLICK_VERSION: "8.4.2"': "candidate deploy must pin click 8.4.2",
     'huggingface_hub==${HF_CLI_VERSION}': "candidate deploy must install the pinned Hugging Face client",
     'click==${HF_CLI_CLICK_VERSION}': "candidate deploy must install the direct module CLI dependency",
     "python3 -m huggingface_hub.cli.hf --help": "candidate deploy must exercise the module CLI",
+    "python3 -m huggingface_hub.cli.hf repos settings --help | grep -- --protected": "candidate deploy must verify Protected visibility support",
     "bash scripts/static-check.sh": "candidate deploy must run the repository static gate",
     "export_hfs_space_bundle.py export": "candidate deploy must export an allowlisted bundle",
     "--profile candidate": "candidate deploy must select only the candidate profile",
@@ -403,11 +412,12 @@ formal_markers = {
     "contents: read": "formal deploy must keep GitHub permissions read-only",
     "environment: hfs-production": "formal deploy must use the hfs-production environment",
     f"FORMAL_SPACE: {expected_spaces['formal']}": "formal deploy must fix the canonical private Space",
-    'HF_CLI_VERSION: "1.5.0"': "formal deploy must pin huggingface_hub 1.5.0",
-    'HF_CLI_CLICK_VERSION: "8.3.3"': "formal deploy must pin click 8.3.3",
+    'HF_CLI_VERSION: "1.25.1"': "formal deploy must pin Protected-compatible huggingface_hub 1.25.1",
+    'HF_CLI_CLICK_VERSION: "8.4.2"': "formal deploy must pin click 8.4.2",
     'huggingface_hub==${HF_CLI_VERSION}': "formal deploy must install the pinned Hugging Face client",
     'click==${HF_CLI_CLICK_VERSION}': "formal deploy must install the direct module CLI dependency",
     "python3 -m huggingface_hub.cli.hf --help": "formal deploy must exercise the module CLI",
+    "python3 -m huggingface_hub.cli.hf repos settings --help | grep -- --protected": "formal deploy must verify Protected visibility support",
     "bash scripts/static-check.sh": "formal deploy must run the repository static gate",
     "export_hfs_space_bundle.py export": "formal deploy must export the strict bundle",
     "--profile formal": "formal deploy must select the fixed formal profile",
@@ -482,9 +492,9 @@ for marker in (
         failures.append(f"release tools tests lack required profile contract case: {marker}")
 for marker in (
     'string_list(manifest, "optional_secrets")',
-    "configured_optional_secrets",
-    "managed_secrets = secrets | optional_secrets",
-    "remote_secrets - managed_secrets",
+    "present_optional_secrets = configured_optional_secrets",
+    "pushed_remote_secrets = remote_setting_names(manifest, pushed_secrets)",
+    "remote_secrets - pushed_remote_secrets",
 ):
     if marker not in sync_source:
         failures.append(f"Settings sync lacks optional Secret contract marker: {marker}")
@@ -493,7 +503,7 @@ for marker in (
     "test_missing_required_secret_is_rejected",
     "test_nonempty_optional_placeholder_is_rejected",
     "test_configured_optional_secret_is_pushed_and_required_on_readback",
-    "test_prune_retains_registered_optional_secret_when_local_value_is_empty",
+    "test_prune_deletes_optional_secret_without_local_plaintext",
 ):
     if marker not in test_source:
         failures.append(f"release tools tests lack required optional Secret case: {marker}")
@@ -603,8 +613,8 @@ require_grep 'QWENPAW_CONSOLE_BUNDLE_SHA256 matches downloaded artifact' scripts
 require_grep 'EXPECTED_QWENPAW_SOURCE_REF' scripts/hf-space-smoke.sh "live smoke must verify the runtime source SHA"
 require_grep 'console bundle provenance does not contain the runtime source SHA' scripts/hf-space-smoke.sh "live smoke must bind console provenance to source SHA"
 require_grep 'payload\.get\("version", \{\}\)\.get\("release_pins", \{\}\)' scripts/hf-space-smoke.sh "live smoke must read provenance from the wrapped ops version payload"
-require_grep 'hf_space_sync.py diff' docs/configuration.md "configuration docs must include Settings diff/readback"
-require_grep 'hf_space_sync.py push' docs/configuration.md "configuration docs must include Settings push"
+require_grep 'hfs_dev.py diff' docs/configuration.md "configuration docs must include Settings diff/readback"
+require_grep 'hfs_dev.py push' docs/configuration.md "configuration docs must include Settings push"
 require_grep 'require-upstream-main' scripts/check-qwenpaw-pins.py "pin checker must support enforcing current upstream main"
 
 require_absent '^ARG DIFY_' Dockerfile "QwenPaw HFS must not expose Dify image selectors"

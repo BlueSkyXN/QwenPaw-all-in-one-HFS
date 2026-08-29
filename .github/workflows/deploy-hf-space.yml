@@ -20,9 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v2-candidate
-  HF_CLI_VERSION: "1.5.0"
-  HF_CLI_CLICK_VERSION: "8.3.3"
+  CANDIDATE_SPACE: BlueSkyXN/QwenPaw-all-in-one-HFS-v3-candidate
+  HF_CLI_VERSION: "1.25.1"
+  HF_CLI_CLICK_VERSION: "8.4.2"
 
 jobs:
   deploy-candidate:
@@ -80,6 +80,7 @@ jobs:
           python3 -m huggingface_hub.cli.hf --help >/dev/null
           python3 -m huggingface_hub.cli.hf upload --help >/dev/null
           python3 -m huggingface_hub.cli.hf download --help >/dev/null
+          python3 -m huggingface_hub.cli.hf repos settings --help | grep -- --protected
 
       - name: Require an existing private candidate with no path outside the allowlist
         env:
