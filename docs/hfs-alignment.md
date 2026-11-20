@@ -33,7 +33,7 @@ cloud/hfs/Dockerfile
 
 ## Source Lane and Build Evidence
 
-This is the HFS `source` lane: Docker build fetches and installs a pinned upstream QwenPaw commit. It also downloads a checksum-pinned console bundle built from that exact commit, verifies it before extraction, and places it in the Python package source tree. The bundle avoids rebuilding the QwenPaw 2.0.1 local Monaco bundle inside the smaller Hugging Face build worker; it is a companion product of the source build, not an `artifact` lane application payload.
+This is the HFS `source` lane: Docker build fetches and installs a pinned upstream QwenPaw commit. It also downloads a checksum-pinned console bundle built from that exact commit, verifies it before extraction, and places it in the Python package source tree. The bundle avoids rebuilding the QwenPaw console bundle inside the smaller Hugging Face build worker; it is a companion product of the source build, not an `artifact` lane application payload.
 
 The semantic `hfs-dev.toml` does not duplicate pin values. Its project/Space identity, lane, version-source choice, and environment-key categories are consumed as HFS metadata. The following immutable build inputs remain implementation evidence in `Dockerfile`:
 
@@ -47,7 +47,7 @@ QWENPAW_CONSOLE_BUNDLE_SHA256  console artifact checksum
 UV_VERSION                     uv installer version
 ```
 
-The default build pins upstream QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2`, expects source version `2.0.1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `c1bbaa54f7f07411b5948c2984c054c0e20352f46f6406101db65a9188aeb8cf`. If the source commit changes, rebuild and repin the companion console bundle as well as the expected source version, then use `scripts/check-qwenpaw-pins.py` to verify the source and bundle together. `scripts/build-console-bundle.sh` and the manual `build-console-bundle` workflow are the paired build evidence; neither changes the lane.
+The default build pins upstream QwenPaw commit `ee58cb1a64f2b21e825c525f73dc44bc7941edea`, expects source version `2.3.0.post1`, and consumes the console bundle whose URL contains the same full SHA and whose SHA-256 is `d90b222a2390b277c70bbbc5f49cd7050e336d160d0a7ab5af248abd1f08b50e`. If the source commit changes, rebuild and repin the companion console bundle as well as the expected source version, then use `scripts/check-qwenpaw-pins.py` to verify the source and bundle together. `scripts/build-console-bundle.sh` and the manual `build-console-bundle` workflow are the paired build evidence; neither changes the lane.
 
 ## Shared Runtime Contract
 

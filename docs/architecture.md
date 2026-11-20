@@ -44,7 +44,7 @@ Docker build
   └─ copies docker/ runtime glue
 ```
 
-The current pinned source is QwenPaw commit `734c8b9fa610381fa6d79b10ae3641b6db4a8cb2` with source version `2.0.1`. Its console bundle is built from the same commit on a GitHub runner and checksum-verified before the source tree is installed; upstream product source is still fetched rather than vendored.
+The current pinned source is QwenPaw commit `ee58cb1a64f2b21e825c525f73dc44bc7941edea` with source version `2.3.0.post1`. Its console bundle is built from the same commit on a GitHub runner and checksum-verified before the source tree is installed; upstream product source is still fetched rather than vendored.
 
 ## Persistence Boundary
 

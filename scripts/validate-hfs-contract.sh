@@ -572,7 +572,7 @@ else:
     source_ref = args["QWENPAW_SOURCE_REF"]
     if not re.fullmatch(r"[0-9a-f]{40}", source_ref):
         failures.append("QWENPAW_SOURCE_REF must be a complete immutable commit SHA")
-    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+", args["QWENPAW_SOURCE_VERSION"]):
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+(?:\.post[0-9]+)?", args["QWENPAW_SOURCE_VERSION"]):
         failures.append("QWENPAW_SOURCE_VERSION must be a concrete source version")
     if source_ref not in args["QWENPAW_CONSOLE_BUNDLE_URL"]:
         failures.append("QWENPAW_CONSOLE_BUNDLE_URL must identify the complete pinned source SHA")
